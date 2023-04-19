@@ -1,0 +1,159 @@
+<html>
+<head>
+  <title>Pong</title>
+  <style>
+    body {
+      background-color: #000;
+    }
+    #pong-game {
+      position: relative;
+      width: 600px;
+      height: 400px;
+      margin: auto;
+      background-color: #ccc;
+    }
+    #pong-1, #pong-2 {
+      position: absolute;
+      width: 10px;
+      height: 80px;
+      background-color: #eee;
+    }
+    #pong-1 {
+      top: 160px;
+      left: 20px;
+    }
+    #pong-2 {
+      top: 160px;
+      right: 20px;
+    }
+    #pong-ball {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 5px;
+      background-color: #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="pong-game">
+    <div id="pong-1"></div>
+    <div id="pong-2"></div>
+    <div id="pong-ball"></div>
+  </div>
+  <script>
+    // game variables
+    let pong_1 = document.getElementById("pong-1");
+    let pong_2 = document.getElementById("pong-2");
+    let pong_ball = document.getElementById("pong-ball");
+    let ball_top = 160;
+    let ball_left = 300;
+    let ball_right = 340;
+    let ball_down = 200;
+    let ball_speed_top = 1;
+    let ball_speed_left = 1;
+    let ball_speed_right = 1;
+    let ball_speed_down = 1;
+    let score_1 = 0;
+    let score_2 = 0;
+    
+    // game functions
+    function movePong_1Up() {
+      let top = pong_1.offsetTop;
+      if(top > 0) {
+        pong_1.style.top = top - 10 + "px";
+      }
+    }
+    
+    function movePong_1Down() {
+      let top = pong_1.offsetTop;
+      if(top < 320) {
+        pong_1.style.top = top + 10 + "px";
+      }
+    }
+    
+    function movePong_2Up() {
+      let top = pong_2.offsetTop;
+      if(top > 0) {
+        pong_2.style.top = top - 10 + "px";
+      }
+    }
+    
+    function movePong_2Down() {
+      let top = pong_2.offsetTop;
+      if(top < 320) {
+        pong_2.style.top = top + 10 + "px";
+      }
+    }
+    
+    function moveBall() {
+      ball_top += ball_speed_top;
+      ball_left += ball_speed_left;
+      ball_right += ball_speed_right;
+      ball_down += ball_speed_down;
+      pong_ball.style.top = ball_top + "px";
+      pong_ball.style.left = ball_left + "px";
+      pong_ball.style.right = ball_right + "px";
+      pong_ball.style.bottom = ball_down + "px";
+    }
+    
+    function checkCollision() {
+      let pong_1_top = pong_1.offsetTop;
+      let pong_1_bottom = pong_1_top + 80;
+      let pong_2_top = pong_2.offsetTop;
+      let pong_2_bottom = pong_2_top + 80;
+      if(ball_top <= 0 || ball_down >= 400) {
+        ball_speed_top = -ball_speed_top;
+        ball_speed_down = -ball_speed_down;
+      }
+      if(ball_left <= 20) {
+        if(ball_top > pong_1_top && ball_top < pong_1_bottom) {
+          ball_speed_left = -ball_speed_left;
+        } else {
+          score_2++;
+          resetBall();
+        }
+      }
+      if(ball_right >= 580) {
+        if(ball_top > pong_2_top && ball_top < pong_2_bottom) {
+          ball_speed_right = -ball_speed_right;
+        } else {
+          score_1++;
+          resetBall();
+        }
+      }
+    }
+    
+    function resetBall() {
+      ball_top = 160;
+      ball_left = 300;
+      ball_right = 340;
+      ball_down = 200;
+      ball_speed_top = 1;
+      ball_speed_left = 1;
+      ball_speed_right = 1;
+      ball_speed_down = 1;
+    }
+    
+    // game loop
+    window.onload = function() {
+      setInterval(moveBall, 10);
+      setInterval(checkCollision, 10);
+    }
+    
+    // game controls
+    window.onkeydown = function(e) {
+      let key = e.keyCode;
+      if(key == 38) {
+        movePong_1Up();
+      } else if(key == 40) {
+        movePong_1Down();
+      } else if(key == 87) {
+        movePong_2Up();
+      } else if(key == 83) {
+        movePong_2Down();
+      }
+    }
+  </script>
+</body>
+</html>
