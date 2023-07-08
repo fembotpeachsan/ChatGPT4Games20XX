@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.3.1/p5.js"></script>
+    <title>Dynamic Donkey Kong Inspired Game</title>
+</head>
+<body>
+    <script>
+        let player;
+        let platforms = [];
+        let fallingObjects = [];
+        const playerSize = 50;
+        const platformHeight = 60;
+        const objectSize = 30;
+        const maxSpeed = 6;
+        const minSpeed = 2;
+        let gravity = 0.2;
+        let jump = -7;
+        let playerVelocity = 0;
+
+        function setup() {
+            createCanvas(800, 600);
+            player = createVector(width / 2, height - playerSize / 2);
+
+            // Create platforms
+            for (let i = 0; i < height / platformHeight; i++) {
+                let platform = createVector(0, i * platformHeight);
+                platforms.push(platform);
+            }
+
+            // Create dynamic number of falling objects
+            let numObjects = floor(random(5, 15));
+            for (let i = 0; i < numObjects; i++) {
+                let fallingObject = createVector(random(width), random(-height, 0));
+                fallingObject.speed = random(minSpeed, maxSpeed);
+                fallingObjects.push(fallingObject);
+            }
+        }
+
+        function draw() {
+            background(0);
+
+            // Player
+            fill(0, 255, 0);
+            rect(player.x, player.y, playerSize, playerSize);
+
+            // Platforms
+            for (let i = 0; i < platforms.length; i++) {
+                let platform = platforms[i];
+                fill(255);
+                rect(platform.x, platform.y, width, 10);
+            }
+
+            // Falling Objects
+            for (let i = 0; i < fallingObjects.length; i++) {
+                let fallingObject = fallingObjects[i];
+                fill(255, 0, 0);
+                rect(fallingObject.x, fallingObject.y, objectSize, objectSize);
+                fallingObject.y += fallingObject.speed;
+
+                // Reset falling object to top
+                if (fallingObject.y > height) {
+                    fallingObject.y = random(-height, 0);
+                    fallingObject.x = random(width);
+                    fallingObject.speed = random(minSpeed, maxSpeed);
+                }
+
+                // Check for collision
+                if (abs(player.x - fallingObject.x) < playerSize / 2 + objectSize / 2 &&
+                    abs(player.y - fallingObject.y) < playerSize / 2 + objectSize / 2) {
+                    resetGame();
+                }
+            }
+
+            // Move player with arrow keys
+            if (keyIsDown(LEFT_ARROW)) {
+                player.x -= maxSpeed;
+            }
+
+            if (keyIsDown(RIGHT_ARROW)) {
+                player.x += maxSpeed;
+            }
+
+            if (keyIsDown(UP_ARROW) && player.y >= height - playerSize - 1) {
+                playerVelocity += jump;
+            }
+
+            playerVelocity += gravity;
+            player.y += playerVelocity;
+            player.y = constrain(player.y, 0, height - playerSize);
+
+            // Win condition
+            if (player.y <= 0) {
+                winGame();
+            }
+        }
+
+        function resetGame() {
+            player.x = width / 2;
+            player.y = height - playerSize / 2;
+            playerVelocity = 0;
+        }
+
+        function winGame() {
+            noLoop();
+            fill(255);
+            textSize(32);
+            text('You Win!', width / 2, height / 2);
+        }
+    </script>
+</body>
+</html>
