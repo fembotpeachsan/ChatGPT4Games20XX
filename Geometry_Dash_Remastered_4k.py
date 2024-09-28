@@ -1,4 +1,4 @@
-aimport pygame
+import pygame
 import json
 import os
 import time
