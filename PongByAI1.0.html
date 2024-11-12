@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flappy Bird AI - High Performance</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #70c5ce;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            border: 2px solid black;
+        }
+        #statsContainer {
+            margin-left: 20px;
+            color: white;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="statsContainer">
+            <div id="fpsDisplay">FPS: 0</div>
+            <div id="episodeStats">Episode: 0</div>
+            <div id="scoreStats">Score: 0</div>
+            <div id="highScoreStats">High Score: 0</div>
+            <div id="aiLearningStats">Learning Progress: 0%</div>
+        </div>
+    </div>
+
+    <script>
+        class PerformanceOptimizedFlappyBirdEnvironment {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d', { alpha: false, desynchronized: true });
+                this.width = this.canvas.width;
+                this.height = this.canvas.height;
+
+                // Pre-allocate objects to reduce garbage collection
+                this.bird = { x: 50, y: 0, velocity: 0 };
+                this.pipeTemplate = { x: 0, topHeight: 0, bottomHeight: 0, passed: false };
+                this.pipes = new Array(3).fill().map(() => ({ ...this.pipeTemplate }));
+
+                // Optimization constants
+                this.GRAVITY = 0.5;
+                this.JUMP_STRENGTH = 10;
+                this.PIPE_SPEED = 3;
+                this.PIPE_GAP = 200;
+            }
+
+            reset() {
+                // Quick reset without object creation
+                this.bird.x = 50;
+                this.bird.y = this.height / 2;
+                this.bird.velocity = 0;
+
+                // Reset pipes
+                this.pipes.forEach((pipe, index) => {
+                    pipe.x = this.width + index * 250;
+                    pipe.topHeight = this.generatePipeHeight();
+                    pipe.bottomHeight = this.height - pipe.topHeight - this.PIPE_GAP;
+                    pipe.passed = false;
+                });
+
+                return this.getState();
+            }
+
+            generatePipeHeight() {
+                const minHeight = 50;
+                const maxHeight = this.height - this.PIPE_GAP - minHeight;
+                return Math.random() * (maxHeight - minHeight) + minHeight;
+            }
+
+            getState() {
+                const closestPipe = this.pipes[0];
+                return [
+                    this.bird.y / this.height,
+                    this.bird.velocity / 10,
+                    closestPipe.x / this.width,
+                    closestPipe.topHeight / this.height,
+                    closestPipe.bottomHeight / this.height
+                ];
+            }
+
+            moveBird(action) {
+                if (action === 1) {
+                    this.bird.velocity = -this.JUMP_STRENGTH;
+                }
+
+                this.bird.velocity += this.GRAVITY;
+                this.bird.y += this.bird.velocity;
+            }
+
+            movePipes() {
+                for (let pipe of this.pipes) {
+                    pipe.x -= this.PIPE_SPEED;
+
+                    // Recycle pipes
+                    if (pipe.x < -50) {
+                        pipe.x = this.width;
+                        pipe.topHeight = this.generatePipeHeight();
+                        pipe.bottomHeight = this.height - pipe.topHeight - this.PIPE_GAP;
+                        pipe.passed = false;
+                    }
+                }
+            }
+
+            checkCollision() {
+                // Optimized collision detection
+                if (this.bird.y <= 0 || this.bird.y + 30 >= this.height) {
+                    return true;
+                }
+
+                const bird = this.bird;
+                const birdRight = bird.x + 30;
+                const birdBottom = bird.y + 30;
+
+                for (let pipe of this.pipes) {
+                    if (birdRight > pipe.x && bird.x < pipe.x + 50) {
+                        if (bird.y < pipe.topHeight || birdBottom > this.height - pipe.bottomHeight) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            step(action) {
+                this.moveBird(action);
+                this.movePipes();
+
+                const done = this.checkCollision();
+                const reward = done ? -10 : 1;
+
+                return {
+                    state: this.getState(),
+                    reward: reward,
+                    done: done
+                };
+            }
+
+            render() {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#70c5ce';
+                ctx.fillRect(0, 0, this.width, this.height);
+
+                // Draw bird
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(this.bird.x, this.bird.y, 30, 30);
+
+                // Draw pipes
+                ctx.fillStyle = 'green';
+                for (let pipe of this.pipes) {
+                    ctx.fillRect(pipe.x, 0, 50, pipe.topHeight);
+                    ctx.fillRect(pipe.x, this.height - pipe.bottomHeight, 50, pipe.bottomHeight);
+                }
+            }
+        }
+
+        class HighPerformanceFlappyBirdAI {
+            constructor(stateSize, actionSize) {
+                this.stateSize = stateSize;
+                this.actionSize = actionSize;
+                this.memory = new Array(2000);
+                this.memoryIndex = 0;
+                this.gamma = 0.99;
+                this.epsilon = 0.2;
+                this.epsilonDecay = 0.995;
+                this.epsilonMin = 0.01;
+                this.learningRate = 0.001;
+                this.model = this.createModel();
+            }
+
+            createModel() {
+                const model = tf.sequential();
+                model.add(tf.layers.dense({ 
+                    inputShape: [this.stateSize], 
+                    units: 64, 
+                    activation: 'relu' 
+                }));
+                model.add(tf.layers.dense({ 
+                    units: 32, 
+                    activation: 'relu' 
+                }));
+                model.add(tf.layers.dense({ 
+                    units: this.actionSize, 
+                    activation: 'softmax' 
+                }));
+                
+                model.compile({
+                    optimizer: tf.train.adam(this.learningRate),
+                    loss: 'categoricalCrossentropy'
+                });
+                
+                return model;
+            }
+
+            async act(state) {
+                if (Math.random() < this.epsilon) {
+                    return Math.floor(Math.random() * this.actionSize);
+                }
+                const qValues = await this.model.predict(tf.tensor2d([state], [1, this.stateSize])).dataSync();
+                return qValues.indexOf(Math.max(...qValues));
+            }
+
+            remember(state, action, reward, nextState, done) {
+                this.memory[this.memoryIndex] = { state, action, reward, nextState, done };
+                this.memoryIndex = (this.memoryIndex + 1) % this.memory.length;
+            }
+
+            async replay(batchSize) {
+                this.epsilon = Math.max( this.epsilonMin, this.epsilon * this.epsilonDecay);
+                const batch = this.memory.filter(Boolean).slice(-batchSize);
+                const states = batch.map(b => b.state);
+                const targets = await Promise.all(batch.map(async (b) => {
+                    const target = await this.model.predict(tf.tensor2d([b.state], [1, this.stateSize])).dataSync();
+                    if (b.done) {
+                        target[b.action] = b.reward;
+                    } else {
+                        const nextQ = await this.model.predict(tf.tensor2d([b.nextState], [1, this.stateSize])).dataSync();
+                        target[b.action] = b.reward + this.gamma * Math.max(...nextQ);
+                    }
+                    return target;
+                }));
+                await this.model.fit(tf.tensor2d(states), tf.tensor2d(targets), { epochs: 1, batchSize, verbose: 0 });
+            }
+        }
+
+        let environment = new PerformanceOptimizedFlappyBirdEnvironment();
+        let agent = new HighPerformanceFlappyBirdAI(5, 2);
+        let episode = 0;
+        let highScore = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        async function train() {
+            let state = environment.reset();
+            let done = false;
+            let episodeReward = 0;
+
+            while (!done) {
+                const action = await agent.act(state);
+                const { state: nextState, reward, done: isDone } = environment.step(action);
+                
+                agent.remember(state, action, reward, nextState, isDone);
+                
+                state = nextState;
+                episodeReward += reward;
+
+                if (isDone) {
+                    episode++;
+                    if (episodeReward > highScore) highScore = episodeReward;
+                    
+                    document.getElementById('episodeStats').textContent = `Episode: ${episode}`;
+                    document.getElementById('scoreStats').textContent = `Score: ${episodeReward}`;
+                    document.getElementById('highScoreStats').textContent = `High Score: ${highScore}`;
+                    document.getElementById('aiLearningStats').textContent = `Learning Progress: ${(episode / 1000 * 100).toFixed(2)}%`;
+                    
+                    episodeReward = 0;
+                    state = environment.reset();
+                }
+
+                await agent.replay(64);
+                environment.render();
+
+                frameCount++;
+                const currentTime = performance.now();
+                if (currentTime - lastTime >= 1000) {
+                    document.getElementById('fpsDisplay').textContent = `FPS: ${frameCount}`;
+                    frameCount = 0;
+                    lastTime = currentTime;
+                }
+            }
+
+            requestAnimationFrame(train);
+        }
+
+        train();
+    </script>
+</body>
+</html>
