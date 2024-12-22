@@ -1,0 +1,212 @@
+from ursina import *
+from ursina.prefabs.first_person_controller import FirstPersonController
+from perlin_noise import PerlinNoise
+import math
+import random
+
+# Define MissionSystem class
+class MissionSystem:
+    def __init__(self, player, vehicle, mission_text):
+        self.player = player
+        self.vehicle = vehicle
+        self.mission_text = mission_text
+
+    def update(self):
+        # Add mission system update logic here
+        pass
+
+# Define NPC_COUNT constant
+NPC_COUNT = 10
+
+# Define DAY_LENGTH constant (in hours)
+DAY_LENGTH = 24  # You can adjust this value as needed
+
+# Define NPC class
+class NPC(Entity):
+    def __init__(self, position=(0, 0, 0)):
+        super().__init__(position=position)
+        self.model = 'cube'
+        self.color = color.green
+        self.scale = (1, 2, 1)
+        self.collider = 'box'
+        self.speed = 1.0
+        # Initialize a random movement direction
+        self.direction = Vec3(random.uniform(-1, 1), 0, random.uniform(-1, 1)).normalized()
+
+    def update(self):
+        # Simple movement logic
+        self.position += self.direction * self.speed * time.dt
+
+        # Boundary check to keep NPC within a certain area (e.g., 50 units)
+        if abs(self.x) > 50 or abs(self.z) > 50:
+            self.direction = -self.direction  # Reverse direction
+
+# Define Vehicle class
+class Vehicle(Entity):
+    def __init__(self, position=(0, 0, 0)):
+        super().__init__(position=position)
+        self.model = 'cube'
+        self.color = color.red
+        self.scale = (2, 1, 4)
+        self.collider = 'box'
+        self.speed = 5.0
+        self.controlled = False  # Flag to determine if the vehicle is being controlled
+
+    def update(self):
+        if self.controlled:
+            # Basic vehicle controls
+            if held_keys['w']:
+                self.position += self.forward * self.speed * time.dt
+            if held_keys['s']:
+                self.position -= self.forward * self.speed * time.dt
+            if held_keys['a']:
+                self.rotation_y += 100 * time.dt
+            if held_keys['d']:
+                self.rotation_y -= 100 * time.dt
+
+# Define Terrain class
+class Terrain(Entity):
+    def __init__(self, size=100, height=5, **kwargs):
+        super().__init__(**kwargs)
+        self.size = size
+        self.height = height
+        self.model = self.generate_terrain()
+        self.texture = 'grass'  # Ensure you have a 'grass' texture or replace it with an existing one
+        self.collider = 'mesh'
+
+    def generate_terrain(self):
+        # Simple flat terrain; you can enhance this with PerlinNoise for varied heights
+        from ursina import Entity, Mesh
+
+        mesh = Mesh()
+        vertices = [
+            Vec3(-self.size / 2, 0, -self.size / 2),
+            Vec3(-self.size / 2, 0, self.size / 2),
+            Vec3(self.size / 2, 0, self.size / 2),
+            Vec3(self.size / 2, 0, -self.size / 2),
+        ]
+        mesh.vertices = vertices
+        mesh.triangles = [0, 1, 2, 0, 2, 3]
+        mesh.generate()
+        return mesh
+
+# Define OpenWorldSim class
+class OpenWorldSim(Ursina):
+    def __init__(self):
+        super().__init__()
+        self.title = "Open-World Sim (Ursina - Rockstar Style!)"
+        self.borderless = False
+        self.fullscreen = False
+        window.size = (1280, 720)
+        window.color = color.rgb(100, 100, 120)
+
+        # Initialize lighting
+        self.sun = DirectionalLight()
+        self.sun.look_at(Vec3(1, -1, 1))
+        self.sun.cast_shadows = True  # Updated to 'cast_shadows'
+        scene.ambient_light = color.rgb(50, 50, 60)  # Corrected ambient light setting
+
+        # Setup scene
+        scene.fog_color = color.rgb(120, 120, 140)
+        scene.fog_density = 0.01
+
+        # Create terrain and entities
+        self.terrain = Terrain()
+        self.player = FirstPersonController(position=(0, 10, 0), speed=10, jump_height=3)
+        camera.parent = self.player
+        camera.position = (0, 1.7, 0)
+
+        # Initialize vehicle
+        self.vehicle = Vehicle(position=(10, self.get_terrain_height(10, 10) + 1, 10))
+        
+        # Spawn trees and NPCs
+        self.spawn_trees()
+        self.npcs = [NPC(position=self.random_position()) for _ in range(NPC_COUNT)]
+
+        # Setup UI and mission system
+        self.mission_text = Text(text="", origin=(0, -0.5), color=color.yellow, scale=2)
+        self.mission_system = MissionSystem(self.player, self.vehicle, self.mission_text)
+
+        # Time system
+        self.time_of_day = 6
+        self.day_speed = 24 / DAY_LENGTH
+        self.vehicle_control = False  # Flag to track vehicle control state
+
+    def update(self):
+        if not hasattr(self, 'time_of_day'):
+            return
+
+        self.time_of_day += self.day_speed * time.dt
+        if self.time_of_day >= 24:
+            self.time_of_day -= 24
+
+        self.update_lighting()
+        self.mission_system.update()
+
+        for npc in self.npcs:
+            npc.update()
+
+        self.vehicle.update()
+
+    def update_lighting(self):
+        sun_angle = (self.time_of_day / 24) * 360
+        self.sun.rotation_x = sun_angle - 90
+
+        # Day/night cycle lighting
+        if 6 <= self.time_of_day < 18:
+            self.sun.color = color.rgb(255, 255, 255)
+            scene.ambient_light = color.rgb(100, 100, 100)
+            scene.fog_color = color.rgb(120, 120, 140)
+        else:
+            self.sun.color = color.rgb(100, 100, 120)
+            scene.ambient_light = color.rgb(20, 20, 30)
+            scene.fog_color = color.rgb(30, 30, 40)
+
+    def input(self, key):
+        if key == 'escape':
+            application.quit()
+        elif key == 'f':
+            self.toggle_vehicle_control()
+
+    def get_terrain_height(self, x, z):
+        # Simple flat terrain; modify if using varied terrain
+        return 0
+
+    def spawn_trees(self):
+        for _ in range(50):
+            pos = self.random_position()
+            tree = Entity(
+                model='tree',  # Ensure you have a 'tree' model or replace it with an existing one
+                position=pos,
+                scale=(1, random.uniform(2, 4), 1),
+                color=color.green,
+                collider='box'
+            )
+
+    def random_position(self):
+        x = random.uniform(-50, 50)
+        z = random.uniform(-50, 50)
+        y = self.get_terrain_height(x, z)
+        return Vec3(x, y, z)
+
+    def toggle_vehicle_control(self):
+        self.vehicle_control = not self.vehicle_control
+        if self.vehicle_control:
+            # Disable player control
+            self.player.enabled = False
+            # Enable vehicle control
+            self.vehicle.controlled = True
+            camera.parent = self.vehicle
+            camera.position = (0, 2, -5)
+        else:
+            # Enable player control
+            self.player.enabled = True
+            # Disable vehicle control
+            self.vehicle.controlled = False
+            camera.parent = self.player
+            camera.position = (0, 1.7, 0)
+
+# Run the application
+if __name__ == '__main__':
+    app = OpenWorldSim()
+    app.run()
