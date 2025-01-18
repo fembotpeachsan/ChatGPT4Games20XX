@@ -1,0 +1,821 @@
+; ──────────────────────────────────────────────────────────────
+;  iNES Header (16 bytes)
+; ──────────────────────────────────────────────────────────────
+        .db "NES",$1A   ; iNES signature
+        .db 1           ; 1 x 16 KB PRG-ROM pages = 16 KB
+        .db 1           ; 1 x 8 KB CHR-ROM pages = 8 KB
+        .db $00         ; Flags 6 (horizontal mirroring, no trainer, mapper 0)
+        .db $00         ; Flags 7
+        .db $00,$00,$00 ; Unused padding
+
+; ──────────────────────────────────────────────────────────────
+;  Start of PRG-ROM code (16KB at $8000)
+; ──────────────────────────────────────────────────────────────
+        .org $8000
+
+; -------------------------------------------------------------
+; Zero Page variables
+; -------------------------------------------------------------
+        .rsset $00
+
+nmi_flag:       .rs 1   ; Set to nonzero each NMI
+frame_counter:  .rs 1   ; Incremented every frame; used for slower movement
+direction:      .rs 1   ; 0=Up,1=Right,2=Down,3=Left
+next_direction: .rs 1   ; Direction we’ll switch to on next snake move
+snake_length:   .rs 1   ; Current snake length
+game_state:     .rs 1   ; 0=Playing, 1=Game Over (very simple state machine)
+fruit_x:        .rs 1   ; Fruit X tile
+fruit_y:        .rs 1   ; Fruit Y tile
+
+; -------------------------------------------------------------
+; Other RAM variables (outside zero page)
+; We’ll store (x,y) for each segment of the snake (max length 32).
+; Each segment takes 2 bytes => 64 bytes total needed. 
+; Let’s place them at $0300.
+; -------------------------------------------------------------
+        .org $0300
+
+snake_xy_table: .ds 64  ; 32 segments x 2 bytes each
+
+; -------------------------------------------------------------
+; Constants
+; -------------------------------------------------------------
+; We define the layout as 1-based or something similar:
+; We’ll use a 16x15 play area (like [X=0..15], [Y=0..14]) with walls around it.
+; For background tile indices, we assume these match the CHR definitions:
+EMPTY_TILE      = $00
+WALL_TILE       = $01
+SNAKE_TILE      = $02
+HEAD_TILE       = $03
+FRUIT_TILE      = $04
+
+; Directions:
+DIR_UP          = 0
+DIR_RIGHT       = 1
+DIR_DOWN        = 2
+DIR_LEFT        = 3
+
+; Game states:
+STATE_PLAYING   = 0
+STATE_GAMEOVER  = 1
+
+; We’ll move the snake once every 10 frames (for slow movement):
+MOVE_DELAY      = 10
+
+; Name Table addresses
+PPU_ADDR_NAMETABLE_0  = $2000
+
+; -------------------------------------------------------------
+; Reset Vector Entry
+; -------------------------------------------------------------
+RESET:
+    SEI                 ; Disable interrupts
+    CLD                 ; Clear decimal mode
+
+    LDX #$FF            ; Init stack pointer
+    TXS
+
+    ; Basic PPU setup: turn off screen
+    LDA #$00
+    STA $2000
+    STA $2001
+
+    ; Clear OAM (sprite) memory: just a quick fill (optional)
+    LDA #$00
+    LDX #$00
+.clearOAM:
+    STA $2003
+    STA $2004
+    INX
+    BNE .clearOAM
+
+    ; Initialize variables
+    LDA #$00
+    STA nmi_flag
+    STA frame_counter
+    STA direction
+    STA next_direction
+    STA snake_length
+    STA game_state
+    STA fruit_x
+    STA fruit_y
+
+    ; Init snake length to 3
+    LDA #3
+    STA snake_length
+
+    ; Place snake segments in the middle
+    ; Snake will start horizontally near top-left
+    ; (x,y) for head = (5,5), next = (4,5), next = (3,5)
+    ; We'll store them in snake_xy_table in head->tail order
+    LDA #5
+    STA snake_xy_table       ; Head X
+    STA snake_xy_table+2     ; Next X
+    STA snake_xy_table+4     ; Next X
+    LDA #5
+    STA snake_xy_table+1     ; Head Y
+    STA snake_xy_table+3     ; Next Y
+    STA snake_xy_table+5     ; Next Y
+
+    ; Direction is RIGHT
+    LDA #DIR_RIGHT
+    STA direction
+    STA next_direction
+
+    ; Set up PPU
+    JSR init_ppu
+
+    ; Enable NMI (bit7) and background display (bit3). No sprites for now.
+    LDA #%10000000
+    STA $2000
+    LDA #%00001000
+    STA $2001
+
+    CLI                 ; Enable interrupts
+
+MainLoop:
+    ; Wait for NMI (vertical blank)
+.waitVBlank:
+    LDA nmi_flag
+    BEQ .waitVBlank
+    STA nmi_flag        ; Clear NMI flag
+
+    ; If game over, skip update and just spin
+    LDA game_state
+    CMP #STATE_GAMEOVER
+    BEQ MainLoop
+
+    ; Read user input
+    JSR read_input
+
+    ; Increase frame counter
+    INC frame_counter
+    ; Check if we should move snake this frame
+    LDA frame_counter
+    CMP #MOVE_DELAY
+    BCC .skipMove       ; Not yet
+    ; Reset frame counter
+    LDA #0
+    STA frame_counter
+
+    ; Actually update snake
+    JSR update_snake
+
+.skipMove:
+    JMP MainLoop
+
+; ──────────────────────────────────────────────────────────────
+; Subroutines
+; ──────────────────────────────────────────────────────────────
+
+;--------------------------------------------------------------
+; init_ppu
+; Clears the nametable, draws walls, places initial snake, fruit.
+;--------------------------------------------------------------
+init_ppu:
+    ; Write palette
+    JSR write_palette
+
+    ; Clear Name Table 0 (32 x 30 = 960 bytes).
+    ; We'll fill with EMPTY_TILE, except for the top/bottom rows
+    ; and left/right columns with WALL_TILE
+    LDA #$20
+    STA $2006
+    LDA #$00
+    STA $2006
+
+    LDX #$00
+.fillNT:
+    LDA #EMPTY_TILE
+    ; Fill borders with WALL
+    CPX #32
+    BCC .firstRow
+    CPX #64
+    BCC .secondRow
+    ; ...
+    ; Instead of complicated loops, we can just do
+    ; a naive approach: 960 times. But let's do a single pass:
+    TXA
+    ; Row = TX / 32, col = TX % 32
+    ; We’ll do quick checks for top/bottom/left/right:
+    TAY
+    LSR A
+    LSR A
+    LSR A
+    LSR A               ; A = row index in A
+    ; row in A, col in X? This is a bit messy, we’ll do simpler:
+
+    ; Actually let's do:
+    CPX #32*1           ; row0
+    BCC .wall
+    CPX #(32*29)        ; last row is row 29 (0-based)
+    BCS .wallCheck2
+.normalCell:
+    ; Middle rows. Check left or right col
+    TXA
+    AND #%00011111      ; col = X % 32
+    CMP #0
+    BEQ .wall
+    CMP #31
+    BEQ .wall
+    LDA #EMPTY_TILE
+    BNE .write
+.wall:
+    LDA #WALL_TILE
+    BNE .write
+.wallCheck2:
+    ; For bottom rows (>= row29)
+    LDA #WALL_TILE
+.write:
+    STA $2007
+
+    INX
+    CPX #960
+    BNE .fillNT
+
+    ; Place fruit randomly
+    JSR place_fruit
+
+    ; Draw the initial snake
+    JSR draw_snake
+
+    RTS
+
+;--------------------------------------------------------------
+; place_fruit
+; Places fruit at a random location in the interior.
+; For demonstration, this uses a very simple “pseudo-random”
+; approach, e.g. based on frame_counter or an LFSR, etc.
+;--------------------------------------------------------------
+place_fruit:
+    ; We'll do: (fruit_x, fruit_y) in range (1..14) for X, (1..13) for Y
+    ; PPU coordinates: row => Y, col => X
+    LDA frame_counter
+    AND #$0F
+    CLC
+    ADC #1
+    STA fruit_x
+
+    LDA frame_counter
+    LSR A
+    AND #$0F
+    CLC
+    ADC #1
+    STA fruit_y
+
+    ; Now place the FRUIT_TILE into the name table
+    JSR draw_fruit
+    RTS
+
+;--------------------------------------------------------------
+; draw_fruit
+; Updates the name table with FRUIT_TILE at (fruit_x, fruit_y).
+;--------------------------------------------------------------
+draw_fruit:
+    ; PPU address = $2000 + (fruit_y * 32) + fruit_x
+    ; We'll do:
+    LDY fruit_y
+    LDX fruit_x
+    ; Compute address in a register:
+    ;  A = fruit_y * 32
+    TYA
+    ASL A
+    ROL A
+    ASL A
+    ROL A
+    ASL A
+    ROL A   ; multiply Y by 32 => A
+
+    CLC
+    ADC X   ; add X
+    ; Now A = offset
+    ; High byte = $20 + (A >> 8)
+    ; Low byte = A & $FF
+    ; But we only expect up to 479 or so. So the high byte is $20 or $21 maybe.
+    ; Let's be safe:
+    STA temp16
+    STY temp16+1  ; not strictly correct but let's keep it simple
+    ; Actually let's do it directly:
+    LDX #$20
+    STX $2006
+    LDA temp16
+    STA $2006
+
+    ; Write FRUIT_TILE
+    LDA #FRUIT_TILE
+    STA $2007
+    RTS
+
+; We'll need a small 2-byte temp for the name table math:
+temp16: .rs 2
+
+;--------------------------------------------------------------
+; draw_snake
+; Draws the snake in the name table:
+;  - Head tile for the first segment
+;  - SNAKE_TILE for the rest
+;--------------------------------------------------------------
+draw_snake:
+    ; snake_length in A
+    ; segments in snake_xy_table
+    LDA snake_length
+    BEQ .done
+    TAX                     ; X = length
+    LDA #0
+    STA temp_index
+    ; We'll iterate from 0..(length-1) segments
+.drawLoop:
+    ; If index=0 => HEAD_TILE, else => SNAKE_TILE
+    CPX #$00
+    BNE .notHead
+    LDA #HEAD_TILE
+    BNE .writeSegment
+.notHead:
+    LDA #SNAKE_TILE
+
+.writeSegment:
+    ; The tile we want to store is in A
+    STA temp_tile
+
+    ; read X coord from snake_xy_table + (temp_index * 2)
+    LDY temp_index
+    ASL Y                   ; multiply by 2
+    TYA
+    CLC
+    ADC #<snake_xy_table
+    STA temp_ptr
+    LDA #>snake_xy_table
+    ADC #0
+    STA temp_ptr+1
+
+    ; Now read X
+    LDY #0
+    LDA [temp_ptr], Y
+    STA temp_x
+    INY
+    LDA [temp_ptr], Y
+    STA temp_y
+
+    ; Write tile to name table
+    JSR write_tile
+
+    ; Decrement X => length
+    DEX
+    ; increment temp_index
+    INC temp_index
+    CPX #0
+    BNE .drawLoop
+
+.done:
+    RTS
+
+;--------------------------------------------------------------
+; erase_tail
+; Erases the last segment from the name table by writing EMPTY_TILE.
+; The last segment is the segment at index = (snake_length-1).
+;--------------------------------------------------------------
+erase_tail:
+    LDA snake_length
+    BEQ .done
+    DEC A
+    TAX                     ; X = tail index
+    TXA
+    ASL A                   ; tail index * 2
+    CLC
+    ADC #<snake_xy_table
+    STA temp_ptr
+    LDA #>snake_xy_table
+    ADC #0
+    STA temp_ptr+1
+
+    LDY #0
+    LDA [temp_ptr],Y
+    STA temp_x
+    INY
+    LDA [temp_ptr],Y
+    STA temp_y
+
+    LDA #EMPTY_TILE
+    STA temp_tile
+    JSR write_tile
+.done:
+    RTS
+
+;--------------------------------------------------------------
+; write_tile
+;  Uses temp_x, temp_y, and temp_tile to place a tile in the 
+;  name table. (Similar to draw_fruit but with 3 temp variables.)
+;--------------------------------------------------------------
+write_tile:
+    ; PPU address = $2000 + temp_y*32 + temp_x
+    LDY temp_y
+    LDX temp_x
+    ; do the multiply
+    TYA
+    ASL A
+    ROL A
+    ASL A
+    ROL A
+    ASL A
+    ROL A   ; Y * 32 => A
+    CLC
+    ADC X
+    ; Then write to $2006
+    TAX
+    LDA #$20
+    STA $2006
+    TXA
+    STA $2006
+    ; Now write tile
+    LDA temp_tile
+    STA $2007
+    RTS
+
+; We need some scratch variables:
+temp_index: .rs 1
+temp_tile:  .rs 1
+temp_x:     .rs 1
+temp_y:     .rs 1
+temp_ptr:   .rs 2   ; 16-bit pointer
+
+;--------------------------------------------------------------
+; update_snake
+;  1) Erase tail (unless we are growing)
+;  2) Shift segments so new head is placed at front
+;  3) Check collision
+;  4) If fruit is eaten, increment length + place new fruit
+;  5) Draw snake again
+;--------------------------------------------------------------
+update_snake:
+    ; Erase tail first (we only skip if we are about to eat fruit).
+    ; We’ll figure out if we need to skip after we see if new head 
+    ; is on fruit. (We can do it in the other order—both ways are possible.)
+
+    ; 1) Calculate new head coords
+    ; current head is at snake_xy_table[0,1], direction in direction
+    LDY #0
+    LDA snake_xy_table,Y
+    STA temp_x
+    INY
+    LDA snake_xy_table,Y
+    STA temp_y
+
+    ; Adjust X,Y based on direction
+    LDA direction
+    CMP #DIR_UP
+    BNE .checkRight
+    ; Up => y--
+    DEC temp_y
+    BNE .skipCheck
+    JMP collision_end     ; if we go beyond boundary, collide
+.checkRight:
+    CMP #DIR_RIGHT
+    BNE .checkDown
+    INC temp_x
+    BNE .skipCheck
+    JMP collision_end
+.checkDown:
+    CMP #DIR_DOWN
+    BNE .checkLeft
+    INC temp_y
+    BNE .skipCheck
+    JMP collision_end
+.checkLeft:
+    CMP #DIR_LEFT
+    BNE .skipCheck
+    DEC temp_x
+    BPL .skipCheck
+    JMP collision_end
+
+.skipCheck:
+    ; new head is in (temp_x, temp_y)
+    ; Check if it’s a wall or snake tile => collision
+    ; We'll read from the name table at that coordinate.
+    JSR read_bg_tile
+    CMP #WALL_TILE
+    BEQ collision_end
+    CMP #SNAKE_TILE
+    BEQ collision_end
+    CMP #HEAD_TILE
+    BEQ collision_end
+
+    ; 2) If the tile is FRUIT_TILE => we grow
+    LDA #FRUIT_TILE
+    CMP $00       ; We need to compare with the read value from read_bg_tile
+                  ; Actually read_bg_tile result is in A, so let's store it 
+                  ; in some variable. Then compare. Let's do that:
+    ; We will fix read_bg_tile to store result in temp_tile.
+    ; So let's do:  LDA temp_tile below. 
+    LDA temp_tile
+    CMP #FRUIT_TILE
+    BNE .noGrow
+    ; we ate fruit => increase length by 1 (capped at 32)
+    LDA snake_length
+    CMP #32
+    BEQ .noGrow   ; already max
+    INC A
+    STA snake_length
+    ; place new fruit
+    JSR place_fruit
+    ; skip erasing tail
+    JMP .shiftHead
+
+.noGrow:
+    ; If we did not eat fruit => erase tail
+    JSR erase_tail
+
+.shiftHead:
+    ; 3) Shift snake segments (from tail up to head)
+    ; We'll do it from the tail index up to 1 => tail = (length-1)
+    ; Then put new (temp_x, temp_y) in [0,1].
+    LDA snake_length
+    BEQ .done
+    DEC A
+    TAX         ; X = last index (tail)
+.shiftLoop:
+    TXA
+    ASL A       ; index*2
+    CLC
+    ADC #<snake_xy_table
+    STA temp_ptr
+    LDA #>snake_xy_table
+    ADC #0
+    STA temp_ptr+1
+
+    ; read from segment (index-1)
+    TXA
+    DEC A
+    TAX
+    ASL A
+    CLC
+    ADC #<snake_xy_table
+    STA temp_index
+    LDA #>snake_xy_table
+    ADC #0
+    STA temp_index+1
+
+    LDY #0
+    LDA [temp_index], Y
+    STA [temp_ptr], Y
+    INY
+    LDA [temp_index], Y
+    STA [temp_ptr], Y
+
+    TXA
+    INX     ; back to old index
+    CPX #1
+    BCS .shiftLoop
+
+    ; now store new head coords in 0
+    LDA temp_x
+    STA snake_xy_table
+    LDA temp_y
+    STA snake_xy_table+1
+
+    ; 4) Check if we collided with snake itself by writing the new HEAD 
+    ;    tile and seeing if it overwrote a snake tile, but we did that read 
+    ;    earlier. We can do a second read if we like, but let's keep it simpler.
+
+    ; 5) Draw new head & body 
+    JSR draw_snake
+
+    JMP .done
+
+collision_end:
+    ; collision => game over
+    LDA #STATE_GAMEOVER
+    STA game_state
+.done:
+    RTS
+
+;--------------------------------------------------------------
+; read_bg_tile
+;  Reads the background tile at (temp_x, temp_y), returns it in A
+;  but also stores it in temp_tile so we can easily compare.
+;--------------------------------------------------------------
+read_bg_tile:
+    LDY temp_y
+    LDX temp_x
+    TYA
+    ASL A
+    ROL A
+    ASL A
+    ROL A
+    ASL A
+    ROL A
+    CLC
+    ADC X
+    ; Store in X
+    TAX
+
+    ; We must read from PPU “vram” via $2006/$2007:
+    ; NES can’t read back nametable data directly in one step
+    ; the read from $2007 is buffered, meaning you have to do 
+    ; a dummy read.  Alternatively, you can keep a copy of the 
+    ; board in CPU RAM. For this minimal sample, let's do 
+    ; a “hacky approach” and hope it lines up. 
+    ; 
+    ; For a real game, you'd keep track of the board in CPU RAM 
+    ; to avoid the complexities of reading from PPU. 
+    ; 
+    ; We'll do the correct 2-read approach:
+    
+    ; Write address
+    LDA #$20
+    STA $2006
+    TXA
+    STA $2006
+    ; Dummy read
+    LDA $2007
+    ; Real read
+    LDA $2007
+
+    STA temp_tile
+    RTS
+
+;--------------------------------------------------------------
+; read_input
+;  Reads the NES controller from $4016 (8 bits).
+;  If Up/Down/Left/Right pressed, set next_direction.
+;--------------------------------------------------------------
+read_input:
+    ; Strobe
+    LDA #$01
+    STA $4016
+    LDA #$00
+    STA $4016
+
+    ; We’ll read 8 bits:
+    LDX #8
+    LDY #0     ; Y=0 => first button is A, then B, Select, Start, Up, Down, Left, Right
+.readLoop:
+    LDA $4016
+    AND #$01
+    BEQ .noPress
+    ; a button is pressed => check Y => if Up/Down/Left/Right
+    CPY #4
+    BEQ .up
+    CPY #5
+    BEQ .down
+    CPY #6
+    BEQ .left
+    CPY #7
+    BEQ .right
+
+    ; else ignore
+    JMP .next
+
+.up:
+    ; We only allow Up if direction != down
+    LDA direction
+    CMP #DIR_DOWN
+    BEQ .next
+    LDA #DIR_UP
+    STA next_direction
+    JMP .next
+
+.down:
+    LDA direction
+    CMP #DIR_UP
+    BEQ .next
+    LDA #DIR_DOWN
+    STA next_direction
+    JMP .next
+
+.left:
+    LDA direction
+    CMP #DIR_RIGHT
+    BEQ .next
+    LDA #DIR_LEFT
+    STA next_direction
+    JMP .next
+
+.right:
+    LDA direction
+    CMP #DIR_LEFT
+    BEQ .next
+    LDA #DIR_RIGHT
+    STA next_direction
+    JMP .next
+
+.noPress:
+.next:
+    INY
+    DEX
+    BNE .readLoop
+
+    ; After reading inputs, update direction = next_direction
+    LDA next_direction
+    STA direction
+
+    RTS
+
+;--------------------------------------------------------------
+; write_palette
+;  Writes a small palette to $3F00.
+;--------------------------------------------------------------
+write_palette:
+    ; Set PPU address to $3F00
+    LDA #$3F
+    STA $2006
+    LDA #$00
+    STA $2006
+
+    ; Write 32 bytes of palette data:
+    LDY #0
+.writeColors:
+    LDA palette, Y
+    STA $2007
+    INY
+    CPY #$20
+    BNE .writeColors
+    RTS
+
+;--------------------------------------------------------------
+; Palette Data (32 bytes: BG + 3 sets of 3-color combos)
+;--------------------------------------------------------------
+palette:
+    ; universal BG color
+    .db $0F
+    ; background palette 0
+    .db $21, $31, $30
+    ; background palette 1
+    .db $0F, $1A, $2A
+    ; background palette 2
+    .db $0F, $16, $26
+    ; background palette 3
+    .db $0F, $19, $29
+
+    ; sprite palettes (unused in this example, but we’ll fill anyway)
+    .db $0F, $00, $10, $20
+    .db $0F, $00, $10, $20
+    .db $0F, $00, $10, $20
+    .db $0F, $00, $10, $20
+
+    ; fill the remainder
+    .db $00,$00,$00,$00,$00
+
+;--------------------------------------------------------------
+; NMI Handler
+;  Sets nmi_flag so main code knows that vblank happened
+;--------------------------------------------------------------
+NMI:
+    INC nmi_flag
+    RTI
+
+;--------------------------------------------------------------
+; IRQ Handler
+;--------------------------------------------------------------
+IRQ:
+    RTI
+
+;--------------------------------------------------------------
+; Vectors (at $FFFA)
+;--------------------------------------------------------------
+        .org $FFFA
+        .dw NMI          ; NMI vector
+        .dw RESET        ; Reset vector
+        .dw IRQ          ; IRQ/BRK vector
+
+; ──────────────────────────────────────────────────────────────
+;  CHR Data (8KB)
+;  Simple 8x8 tiles: you can customize them. Below is a minimal
+;  example that gives you 5 basic tiles:
+;    00 = EMPTY
+;    01 = WALL
+;    02 = SNAKE body
+;    03 = HEAD
+;    04 = FRUIT
+;  … fill the rest with 0xFF or something.
+; ──────────────────────────────────────────────────────────────
+        .org $10010  ; start of CHR data (0x10 + 0x4000 = 0x10010)
+
+; --- EMPTY_TILE (0x00) 8 bytes for plane 0, 8 bytes plane 1
+        .db $00,$00,$00,$00,$00,$00,$00,$00
+        .db $00,$00,$00,$00,$00,$00,$00,$00
+
+; --- WALL_TILE (0x01) - just a solid block
+        .db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+        .db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+
+; --- SNAKE_TILE (0x02)
+;     A simple pattern with a filled block except edges
+        .db %11111111, %10000001, %10000001, %10000001
+        .db %10000001, %10000001, %10000001, %11111111
+        ; plane 1
+        .db $00,$00,$00,$00,$00,$00,$00,$00
+
+; --- HEAD_TILE (0x03) - can do something slightly different
+        .db %11111111, %10011001, %10100101, %10100101
+        .db %10000001, %10011001, %10000001, %11111111
+        ; plane 1
+        .db $00,$00,$00,$00,$00,$00,$00,$00
+
+; --- FRUIT_TILE (0x04) - maybe a small dot in the middle
+        .db %00000000, %00111100, %01111110, %01111110
+        .db %01111110, %01111110, %00111100, %00000000
+        ; plane 1
+        .db $00,$00,$00,$00,$00,$00,$00,$00
+
+; fill the rest of the 8KB (8192 bytes) with 0xFF
+        .dsb (8192 - (5 * 16)), $FF
