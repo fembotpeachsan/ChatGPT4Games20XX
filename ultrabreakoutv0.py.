@@ -1,0 +1,436 @@
+import pygame
+import sys
+import numpy as np
+
+# -----------------------------------------------------------------------------
+# Breakout Game in Pygame (Python 3.13 / macOS M1)
+# -----------------------------------------------------------------------------
+# This version uses Pygame-drawn shapes for bricks, paddle, and ball.
+# No external PNG images or audio files required.
+#
+# Controls:
+#   Left/Right Arrow Keys  -> Move paddle
+#   Escape (ESC)           -> Quit game
+# -----------------------------------------------------------------------------
+
+# Screen dimensions
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+
+# Frames per second
+FPS = 60
+
+# Colors (R, G, B)
+WHITE   = (255, 255, 255)
+BLACK   = (0,   0,   0)
+GRAY    = (200, 200, 200)
+RED     = (255, 0,   0)
+GREEN   = (0,   255, 0)
+BLUE    = (0,   0,   255)
+PURPLE  = (128, 0,   128)
+ORANGE  = (255, 165, 0)
+CYAN    = (0,   255, 255)
+YELLOW  = (255, 255, 0)
+
+# Paddle properties
+PADDLE_WIDTH = 100
+PADDLE_HEIGHT = 15
+PADDLE_SPEED = 8
+
+# Ball properties
+BALL_SIZE = 10
+BALL_SPEED = 5
+
+# Bricks
+BRICK_ROWS = 6
+BRICK_COLUMNS = 10
+BRICK_WIDTH = 60
+BRICK_HEIGHT = 20
+BRICK_PADDING_X = 5
+BRICK_PADDING_Y = 5
+BRICK_OFFSET_TOP = 50
+BRICK_OFFSET_LEFT = 55
+
+# -----------------------------------------------------------------------------
+# Helper Classes
+# -----------------------------------------------------------------------------
+
+class Paddle(pygame.Rect):
+    """ Represents the player's paddle. """
+    def __init__(self, x, y, width, height, speed):
+        super().__init__(x, y, width, height)
+        self.speed = speed
+
+    def move_left(self):
+        self.x = max(self.x - self.speed, 0)
+
+    def move_right(self):
+        self.x = min(self.x + self.speed, SCREEN_WIDTH - self.width)
+
+class Ball(pygame.Rect):
+    """ Represents the ball, including its velocity. """
+    def __init__(self, x, y, size, speed):
+        super().__init__(x, y, size, size)
+        self.dx = speed
+        self.dy = -speed
+
+    def update(self):
+        """ Moves the ball and handles wall bounces. """
+        self.x += self.dx
+        self.y += self.dy
+
+        # Bounce off walls
+        if self.left <= 0 or self.right >= SCREEN_WIDTH:
+            self.dx = -self.dx
+            play_sound(bounce_sound)
+
+        # Bounce off top
+        if self.top <= 0:
+            self.dy = -self.dy
+            play_sound(bounce_sound)
+
+class Brick(pygame.Rect):
+    """ Represents a single brick. """
+    def __init__(self, x, y, width, height, color):
+        super().__init__(x, y, width, height)
+        self.color = color
+
+# -----------------------------------------------------------------------------
+# Core Game Logic
+# -----------------------------------------------------------------------------
+
+def create_bricks():
+    """ Creates a 2D grid of bricks. """
+    bricks = []
+    colors = [RED, GREEN, BLUE, PURPLE, ORANGE, YELLOW]
+    for row in range(BRICK_ROWS):
+        for col in range(BRICK_COLUMNS):
+            x = BRICK_OFFSET_LEFT + col * (BRICK_WIDTH + BRICK_PADDING_X)
+            y = BRICK_OFFSET_TOP + row * (BRICK_HEIGHT + BRICK_PADDING_Y)
+            brick = Brick(x, y, BRICK_WIDTH, BRICK_HEIGHT, colors[row % len(colors)])
+            bricks.append(brick)
+    return bricks
+
+def draw_bricks(screen, bricks):
+    """ Draws all bricks. """
+    for brick in bricks:
+        pygame.draw.rect(screen, brick.color, brick)
+
+def play_sound(sound):
+    """ Plays a sound only if it's loaded. """
+    if sound:
+        sound.play()
+
+def generate_sound(frequency, duration_ms, sample_rate=44100):
+    """ Generates a sine wave sound. """
+    t = np.linspace(0, duration_ms / 1000, int(sample_rate * (duration_ms / 1000)), False)
+    wave = 32767 * np.sin(2 * np.pi * frequency * t)
+    wave = wave.astype(np.int16)
+    return pygame.mixer.Sound(buffer=wave.tobytes())
+
+def load_sounds():
+    """ Loads sound effects. """
+    try:
+        pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=512)
+        bounce_s = generate_sound(500, 100)
+        brick_s = generate_sound(700, 100)
+        return bounce_s, brick_s
+    except Exception as e:
+        print(f"Could not generate sounds: {e}")
+        return None, None
+
+def main():
+    pygame.init()
+
+    # Load sounds
+    global bounce_sound, brick_sound
+    bounce_sound, brick_sound = load_sounds()
+
+    # Set up display
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Breakout in Pygame - Fixed Version")
+
+    # Clock for FPS control
+    clock = pygame.time.Clock()
+
+    # Create game objects
+    paddle = Paddle((SCREEN_WIDTH - PADDLE_WIDTH) // 2, SCREEN_HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT, PADDLE_SPEED)
+    ball = Ball(paddle.centerx - BALL_SIZE // 2, paddle.top - BALL_SIZE, BALL_SIZE, BALL_SPEED)
+    bricks = create_bricks()
+
+    # Game loop
+    running = True
+    score = 0
+
+    while running:
+        clock.tick(FPS)
+
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                running = False
+
+        # Handle paddle movement
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT]:
+            paddle.move_left()
+        if keys[pygame.K_RIGHT]:
+            paddle.move_right()
+
+        # Update ball position
+        ball.update()
+
+        # Paddle collision
+        if ball.colliderect(paddle) and ball.dy > 0:
+            ball.dy = -ball.dy
+            offset = (ball.centerx - paddle.centerx) / (paddle.width / 2)
+            ball.dx = BALL_SPEED * offset * 1.5
+            play_sound(bounce_sound)
+
+        # Brick collision
+        hit_index = ball.collidelist(bricks)
+        if hit_index != -1:
+            bricks.pop(hit_index)
+            score += 10
+            ball.dy = -ball.dy
+            play_sound(brick_sound)
+
+        # Ball out of bounds (game over)
+        if ball.top > SCREEN_HEIGHT:
+            running = False
+
+        # Rendering
+        screen.fill(BLACK)
+        draw_bricks(screen, bricks)
+        pygame.draw.rect(screen, WHITE, paddle)
+        pygame.draw.ellipse(screen, WHITE, ball)
+        font = pygame.font.Font(None, 36)
+        text_surface = font.render(f"Score: {score}", True, WHITE)
+        screen.blit(text_surface, (10, 10))
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
+    import pygame
+    import sys
+    import numpy as np
+
+    # -----------------------------------------------------------------------------
+    # Breakout Game in Pygame (Python 3.13 / macOS M1)
+    # -----------------------------------------------------------------------------
+    # This version uses Pygame-drawn shapes for bricks, paddle, and ball.
+    # No external PNG images or audio files required.
+    #
+    # Controls:
+    #   Left/Right Arrow Keys  -> Move paddle
+    #   Escape (ESC)           -> Quit game
+    # -----------------------------------------------------------------------------
+
+    # Screen dimensions
+    SCREEN_WIDTH = 800
+    SCREEN_HEIGHT = 600
+
+    # Frames per second
+    FPS = 60
+
+    # Colors (R, G, B)
+    WHITE   = (255, 255, 255)
+    BLACK   = (0,   0,   0)
+    GRAY    = (200, 200, 200)
+    RED     = (255, 0,   0)
+    GREEN   = (0,   255, 0)
+    BLUE    = (0,   0,   255)
+    PURPLE  = (128, 0,   128)
+    ORANGE  = (255, 165, 0)
+    CYAN    = (0,   255, 255)
+    YELLOW  = (255, 255, 0)
+
+    # Paddle properties
+    PADDLE_WIDTH = 100
+    PADDLE_HEIGHT = 15
+    PADDLE_SPEED = 8
+
+    # Ball properties
+    BALL_SIZE = 10
+    BALL_SPEED = 5
+
+    # Bricks
+    BRICK_ROWS = 6
+    BRICK_COLUMNS = 10
+    BRICK_WIDTH = 60
+    BRICK_HEIGHT = 20
+    BRICK_PADDING_X = 5
+    BRICK_PADDING_Y = 5
+    BRICK_OFFSET_TOP = 50
+    BRICK_OFFSET_LEFT = 55
+
+    # -----------------------------------------------------------------------------
+    # Helper Classes
+    # -----------------------------------------------------------------------------
+
+    class Paddle(pygame.Rect):
+        """ Represents the player's paddle. """
+        def __init__(self, x, y, width, height, speed):
+            super().__init__(x, y, width, height)
+            self.speed = speed
+
+        def move_left(self):
+            self.x = max(self.x - self.speed, 0)
+
+        def move_right(self):
+            self.x = min(self.x + self.speed, SCREEN_WIDTH - self.width)
+
+    class Ball(pygame.Rect):
+        """ Represents the ball, including its velocity. """
+        def __init__(self, x, y, size, speed):
+            super().__init__(x, y, size, size)
+            self.dx = speed
+            self.dy = -speed
+
+        def update(self):
+            """ Moves the ball and handles wall bounces. """
+            self.x += self.dx
+            self.y += self.dy
+
+            # Bounce off walls
+            if self.left <= 0 or self.right >= SCREEN_WIDTH:
+                self.dx = -self.dx
+                play_sound(bounce_sound)
+
+            # Bounce off top
+            if self.top <= 0:
+                self.dy = -self.dy
+                play_sound(bounce_sound)
+
+    class Brick(pygame.Rect):
+        """ Represents a single brick. """
+        def __init__(self, x, y, width, height, color):
+            super().__init__(x, y, width, height)
+            self.color = color
+
+    # -----------------------------------------------------------------------------
+    # Core Game Logic
+    # -----------------------------------------------------------------------------
+
+    def create_bricks():
+        """ Creates a 2D grid of bricks. """
+        bricks = []
+        colors = [RED, GREEN, BLUE, PURPLE, ORANGE, YELLOW]
+        for row in range(BRICK_ROWS):
+            for col in range(BRICK_COLUMNS):
+                x = BRICK_OFFSET_LEFT + col * (BRICK_WIDTH + BRICK_PADDING_X)
+                y = BRICK_OFFSET_TOP + row * (BRICK_HEIGHT + BRICK_PADDING_Y)
+                brick = Brick(x, y, BRICK_WIDTH, BRICK_HEIGHT, colors[row % len(colors)])
+                bricks.append(brick)
+        return bricks
+
+    def draw_bricks(screen, bricks):
+        """ Draws all bricks. """
+        for brick in bricks:
+            pygame.draw.rect(screen, brick.color, brick)
+
+    def play_sound(sound):
+        """ Plays a sound only if it's loaded. """
+        if sound:
+            sound.play()
+
+    def generate_sound(frequency, duration_ms, sample_rate=44100):
+        """ Generates a sine wave sound. """
+        t = np.linspace(0, duration_ms / 1000, int(sample_rate * (duration_ms / 1000)), False)
+        wave = 32767 * np.sin(2 * np.pi * frequency * t)
+        wave = wave.astype(np.int16)
+        return pygame.mixer.Sound(buffer=wave.tobytes())
+
+    def load_sounds():
+        """ Loads sound effects. """
+        try:
+            pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=512)
+            bounce_s = generate_sound(500, 100)
+            brick_s = generate_sound(700, 100)
+            return bounce_s, brick_s
+        except Exception as e:
+            print(f"Could not generate sounds: {e}")
+            return None, None
+
+    def main():
+        pygame.init()
+
+        # Load sounds
+        global bounce_sound, brick_sound
+        bounce_sound, brick_sound = load_sounds()
+
+        # Set up display
+        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("Breakout in Pygame - Fixed Version")
+
+        # Clock for FPS control
+        clock = pygame.time.Clock()
+
+        # Create game objects
+        paddle = Paddle((SCREEN_WIDTH - PADDLE_WIDTH) // 2, SCREEN_HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT, PADDLE_SPEED)
+        ball = Ball(paddle.centerx - BALL_SIZE // 2, paddle.top - BALL_SIZE, BALL_SIZE, BALL_SPEED)
+        bricks = create_bricks()
+
+        # Game loop
+        running = True
+        score = 0
+
+        while running:
+            clock.tick(FPS)
+
+            # Handle events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    running = False
+
+            # Handle paddle movement
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT]:
+                paddle.move_left()
+            if keys[pygame.K_RIGHT]:
+                paddle.move_right()
+
+            # Update ball position
+            ball.update()
+
+            # Paddle collision
+            if ball.colliderect(paddle) and ball.dy > 0:
+                ball.dy = -ball.dy
+                offset = (ball.centerx - paddle.centerx) / (paddle.width / 2)
+                ball.dx = BALL_SPEED * offset * 1.5
+                play_sound(bounce_sound)
+
+            # Brick collision
+            hit_index = ball.collidelist(bricks)
+            if hit_index != -1:
+                bricks.pop(hit_index)
+                score += 10
+                ball.dy = -ball.dy
+                play_sound(brick_sound)
+
+            # Ball out of bounds (game over)
+            if ball.top > SCREEN_HEIGHT:
+                running = False
+
+            # Rendering
+            screen.fill(BLACK)
+            draw_bricks(screen, bricks)
+            pygame.draw.rect(screen, WHITE, paddle)
+            pygame.draw.ellipse(screen, WHITE, ball)
+            font = pygame.font.Font(None, 36)
+            text_surface = font.render(f"Score: {score}", True, WHITE)
+            screen.blit(text_surface, (10, 10))
+            pygame.display.flip()
+
+        pygame.quit()
+        sys.exit()
+
+    if __name__ == "__main__":
+        main()
