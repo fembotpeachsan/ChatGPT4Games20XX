@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Flames Royale - 2D Battle Royale</title>
+    <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            width: 220px;
+            z-index: 100;
+        }
+        input, button {
+            margin: 5px 0;
+            padding: 5px;
+            width: 100%;
+        }
+        #players {
+            margin-top: 10px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        .player-item {
+            margin: 2px 0;
+            padding: 2px;
+        }
+        #game-ui {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+        }
+        #health-bar {
+            width: 200px;
+            height: 20px;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid white;
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 100;
+        }
+        #health-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(to right, #ff0000, #00ff00);
+            transition: width 0.3s;
+        }
+        #storm-timer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #weapon-display {
+            position: absolute;
+            bottom: 40px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #kill-feed {
+            position: absolute;
+            top: 10px;
+            right: 150px;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+            z-index: 100;
+        }
+        #connection-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #333;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 80%;
+            color: white;
+            text-align: center;
+        }
+        .modal-content h2 {
+            color: #ff0;
+            margin-top: 0;
+        }
+        .modal-content button {
+            background: #ff0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .modal-content button:hover {
+            background: #ff5;
+        }
+        #room-id {
+            font-family: monospace;
+            background: #222;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            user-select: all;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #ff0;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #ping-display {
+            position: absolute;
+            bottom: 5px;
+            left: 220px;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.5);
+            padding: 3px;
+            border-radius: 3px;
+            z-index: 100;
+        }
+        #copy-button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Connection Modal -->
+    <div id="connection-modal">
+        <div class="modal-content">
+            <h2>FLAMES ROYALE</h2>
+            <p>2D Battle Royale - No Servers Required!</p>
+            
+            <div id="create-game-section">
+                <h3>Create Game</h3>
+                <button id="create-game-btn">CREATE NEW GAME</button>
+                <div id="created-room" style="display: none;">
+                    <p>Share this game code with friends:</p>
+                    <div id="room-id"></div>
+                    <button id="copy-button">Copy Code</button>
+                    <p>Waiting for players to join...</p>
+                    <div class="loader"></div>
+                </div>
+            </div>
+            
+            <div id="join-game-section">
+                <h3>Join Game</h3>
+                <input type="text" id="join-room-id" placeholder="Enter game code">
+                <button id="join-game-btn">JOIN GAME</button>
+                <div id="joining-room" style="display: none;">
+                    <p>Connecting to game...</p>
+                    <div class="loader"></div>
+                </div>
+            </div>
+            
+            <div id="connection-status"></div>
+        </div>
+    </div>
+
+    <!-- Game UI Elements -->
+    <div id="ui" style="display: none;">
+        <h3>FLAMES ROYALE</h3>
+        <div>Game Code: <span id="my-id">Connecting...</span> <button id="copy-id-btn" style="width: auto;">Copy</button></div>
+        <div id="status">Status: Ready</div>
+        <div>Players Alive: <span id="players-count">0</span></div>
+        <div id="players"></div>
+    </div>
+
+    <div id="health-bar" style="display: none;"><div id="health-fill"></div></div>
+    <div id="storm-timer" style="display: none;">Storm: <span id="timer">waiting for players</span></div>
+    <div id="weapon-display" style="display: none;">Weapon: Basic Pistol</div>
+    <div id="kill-feed"></div>
+    <div id="ping-display">Ping: -- ms</div>
+
+    <script>
+        // Enhanced PeerJS Configuration with ICE servers for NAT traversal
+        const peerConfig = {
+            debug: 2,
+            config: {
+                'iceServers': [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' },
+                    {
+                        urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
+                        credential: 'webrtc',
+                        username: 'webrtc'
+                    }
+                ],
+                'sdpSemantics': 'unified-plan'
+            }
+        };
+
+        // Initialize Kaboom.js
+        kaboom({
+            global: true,
+            fullscreen: true,
+            scale: 2,
+            debug: true,
+            clearColor: [0.1, 0.7, 0.8, 1],
+        });
+        
+        // Network and game state
+        let peer = null;
+        const connections = {};
+        const roomPrefix = "flamesroyale-";
+        let isHost = false;
+        let roomId = "";
+        let lastPingTime = {};
+        let pingInterval = null;
+
+        // UI elements
+        const connectionModal = document.getElementById('connection-modal');
+        const createGameBtn = document.getElementById('create-game-btn');
+        const joinGameBtn = document.getElementById('join-game-btn');
+        const roomIdDisplay = document.getElementById('room-id');
+        const joinRoomInput = document.getElementById('join-room-id');
+        const connectionStatus = document.getElementById('connection-status');
+        const createdRoomSection = document.getElementById('created-room');
+        const joiningRoomSection = document.getElementById('joining-room');
+        const copyButton = document.getElementById('copy-button');
+        const copyIdBtn = document.getElementById('copy-id-btn');
+        const pingDisplay = document.getElementById('ping-display');
+        const gameUI = document.getElementById('ui');
+        const healthBar = document.getElementById('health-bar');
+        const stormTimer = document.getElementById('storm-timer');
+        const weaponDisplay = document.getElementById('weapon-display');
+
+        // =================== ASSETS LOADING ===================
+        loadSprite("player", "https://i.imgur.com/wbKxhcd.png");
+        loadSprite("grass", "https://i.imgur.com/BaRXCpZ.png");
+        loadSprite("wall", "https://i.imgur.com/M6rwarW.png");
+        loadSprite("bullet", "https://i.imgur.com/uxTdBrv.png");
+        loadSprite("medikit", "https://i.imgur.com/Vs4qGZB.png");
+        loadSprite("shotgun", "https://i.imgur.com/qF2ip1L.png");
+        loadSprite("rifle", "https://i.imgur.com/tnd6rka.png");
+        loadSound("shoot", "https://kaboomjs.com/sounds/shoot.mp3");
+        loadSound("explosion", "https://kaboomjs.com/sounds/explosion.mp3");
+        loadSound("powerup", "https://kaboomjs.com/sounds/powerup.mp3");
+        loadSound("hit", "https://kaboomjs.com/sounds/hit.mp3");
+
+        // =================== GAME CONFIGURATION ===================
+        const PLAYER_SPEED = 220;
+        const BULLET_SPEED = 600;
+        const STORM_DAMAGE = 1; // damage per second
+        const STORM_SHRINK_TIME = 60; // seconds
+        const MAX_HEALTH = 100;
+
+        // Game state
+        const gameState = {
+            players: {},
+            localPlayer: null,
+            bullets: [],
+            powerups: [],
+            storm: {
+                active: false,
+                radius: width() * 2,
+                targetRadius: width() / 2,
+                center: vec2(width()/2, height()/2),
+                shrinkStartTime: 0,
+                shrinkDuration: STORM_SHRINK_TIME,
+                damagePerSec: STORM_DAMAGE
+            },
+            playerCount: 0,
+            gameStarted: false,
+            killFeed: []
+        };
+
+        // Weapons configuration
+        const WEAPONS = {
+            "pistol": {
+                name: "Basic Pistol",
+                damage: 10,
+                fireRate: 0.5, // seconds between shots
+                bulletSpeed: BULLET_SPEED,
+                bulletSize: 1
+            },
+            "shotgun": {
+                name: "Shotgun",
+                damage: 25,
+                fireRate: 1,
+                bulletSpeed: BULLET_SPEED * 0.8,
+                bulletSize: 1.5,
+                bulletCount: 5,
+                spread: 0.3
+            },
+            "rifle": {
+                name: "Assault Rifle",
+                damage: 15,
+                fireRate: 0.2,
+                bulletSpeed: BULLET_SPEED * 1.2,
+                bulletSize: 0.8
+            }
+        };
+
+        // =================== CONNECTION HANDLING ===================
+        // Initialize PeerJS
+        function initializePeer() {
+            // Generate a random ID with prefix
+            const randomId = roomPrefix + Math.random().toString(36).substr(2, 9);
+            
+            // Create the Peer object
+            peer = new Peer(randomId, peerConfig);
+            
+            peer.on('open', id => {
+                console.log('My peer ID is: ' + id);
+                document.getElementById('my-id').textContent = id.replace(roomPrefix, '');
+                roomId = id;
+                
+                if (isHost) {
+                    roomIdDisplay.textContent = id.replace(roomPrefix, '');
+                    createdRoomSection.style.display = 'block';
+                }
+            });
+            
+            peer.on('connection', handleConnection);
+            
+            peer.on('error', err => {
+                console.error('PeerJS error:', err);
+                connectionStatus.innerHTML = `<p style="color: #ff4444;">Error: ${err.type}</p>`;
+                
+                // Reconnect on certain errors
+                if (err.type === 'disconnected' || err.type === 'network' || err.type === 'server-error') {
+                    reconnectPeer();
+                }
+            });
+            
+            return peer;
+        }
+
+        // Reconnect PeerJS if disconnected
+        function reconnectPeer() {
+            if (peer) {
+                peer.destroy();
+            }
+            
+            connectionStatus.innerHTML = '<p>Reconnecting...</p>';
+            
+            setTimeout(() => {
+                initializePeer();
+            }, 2000);
+        }
+
+        // Create a new game (as host)
+        createGameBtn.addEventListener('click', () => {
+            isHost = true;
+            initializePeer();
+            connectionStatus.innerHTML = '<p>Game created! Waiting for players...</p>';
+        });
+
+        // Join an existing game
+        joinGameBtn.addEventListener('click', () => {
+            const roomCode = joinRoomInput.value.trim();
+            
+            if (!roomCode) {
+                connectionStatus.innerHTML = '<p style="color: #ff4444;">Please enter a game code</p>';
+                return;
+            }
+            
+            isHost = false;
+            joiningRoomSection.style.display = 'block';
+            
+            // Initialize peer with random ID
+            peer = initializePeer();
+            
+            // Connect to host when our peer is ready
+            peer.on('open', (id) => {
+                connectToHost(roomPrefix + roomCode);
+            });
+        });
+
+        // Connect to game host
+        function connectToHost(hostId) {
+            console.log('Connecting to host:', hostId);
+            
+            try {
+                const conn = peer.connect(hostId, {
+                    reliable: true
+                });
+                
+                conn.on('open', () => {
+                    console.log('Connected to host!');
+                    handleConnection(conn);
+                    
+                    // Hide modal and show game
+                    connectionModal.style.display = 'none';
+                    showGameUI();
+                    
+                    // Start ping measurement
+                    startPingMeasurement();
+                });
+                
+                conn.on('error', (err) => {
+                    console.error('Connection error:', err);
+                    connectionStatus.innerHTML = `<p style="color: #ff4444;">Failed to connect to game. Check the code and try again.</p>`;
+                    joiningRoomSection.style.display = 'none';
+                });
+            } catch (error) {
+                console.error('Connection error:', error);
+                connectionStatus.innerHTML = `<p style="color: #ff4444;">Failed to connect to game. Check the code and try again.</p>`;
+                joiningRoomSection.style.display = 'none';
+            }
+        }
+
+        // Handle new connections
+        function handleConnection(conn) {
+            console.log('New connection:', conn.peer);
+            
+            conn.on('open', () => {
+                // Add to connections
+                connections[conn.peer] = conn;
+                
+                // If we're the host, notify all players about the new connection
+                if (isHost) {
+                    broadcastPlayerList();
+                    
+                    // If this is the first connection, hide modal and start game
+                    if (Object.keys(connections).length === 1) {
+                        connectionModal.style.display = 'none';
+                        showGameUI();
+                        startPingMeasurement();
+                    }
+                }
+                
+                // Send initial player state
+                sendPlayerUpdate(conn);
+                
+                // Create remote player
+                createRemotePlayer(conn.peer);
+                updatePlayersList();
+                updatePlayersCount();
+                
+                // Check game start
+                checkGameStart();
+            });
+            
+            conn.on('data', (data) => {
+                handlePeerData(conn.peer, data);
+            });
+            
+            conn.on('close', () => {
+                console.log('Connection closed:', conn.peer);
+                delete connections[conn.peer];
+                removeRemotePlayer(conn.peer);
+                
+                if (isHost) {
+                    broadcastPlayerList();
+                }
+                
+                updatePlayersList();
+                updatePlayersCount();
+            });
+            
+            conn.on('error', (err) => {
+                console.error('Connection error with', conn.peer, ':', err);
+            });
+        }
+
+        // Start ping measurement
+        function startPingMeasurement() {
+            pingInterval = setInterval(() => {
+                // Send ping to all connected peers
+                Object.values(connections).forEach(conn => {
+                    if (conn.open) {
+                        lastPingTime[conn.peer] = Date.now();
+                        conn.send({ type: 'ping', time: Date.now() });
+                    }
+                });
+                
+                // Update ping display
+                updatePingDisplay();
+            }, 2000);
+        }
+
+        // Update ping display with average ping
+        function updatePingDisplay() {
+            const pings = Object.values(lastPingTime).filter(p => p !== null);
+            
+            if (pings.length === 0) {
+                pingDisplay.textContent = `Ping: -- ms`;
+                return;
+            }
+            
+            const avgPing = Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
+            pingDisplay.textContent = `Ping: ${avgPing} ms`;
+            
+            // Color code based on ping quality
+            if (avgPing < 100) {
+                pingDisplay.style.color = '#00ff00';
+            } else if (avgPing < 200) {
+                pingDisplay.style.color = '#ffff00';
+            } else {
+                pingDisplay.style.color = '#ff0000';
+            }
+        }
+
+        // Broadcast player list to all clients
+        function broadcastPlayerList() {
+            const playerIds = [peer.id, ...Object.keys(connections)];
+            
+            broadcastToAll({
+                type: 'player-list',
+                players: playerIds
+            });
+        }
+
+        // Copy game code to clipboard
+        copyButton.addEventListener('click', () => {
+            const code = roomIdDisplay.textContent;
+            navigator.clipboard.writeText(code)
+                .then(() => {
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyButton.textContent = 'Copy Code';
+                    }, 2000);
+                })
+                .catch(err => {
+                    console.error('Failed to copy game code:', err);
+                });
+        });
+
+        // Copy ID during game
+        copyIdBtn.addEventListener('click', () => {
+            const id = document.getElementById('my-id').textContent;
+            navigator.clipboard.writeText(id)
+                .then(() => {
+                    copyIdBtn.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyIdBtn.textContent = 'Copy';
+                    }, 2000);
+                });
+        });
+
+        // Show game UI elements
+        function showGameUI() {
+            gameUI.style.display = 'block';
+            healthBar.style.display = 'block';
+            stormTimer.style.display = 'block';
+            weaponDisplay.style.display = 'block';
+        }
+
+        // =================== MAP CREATION ===================
+        // Generate a simple map with walls
+        for (let i = 0; i < 20; i++) {
+            for (let j = 0; j < 20; j++) {
+                add([
+                    sprite("grass"),
+                    pos(i * 64, j * 64),
+                    scale(2),
+                    "background"
+                ]);
+            }
+        }
+
+        // Add some walls
+        const walls = [];
+        for (let i = 0; i < 15; i++) {
+            const wallPos = vec2(
+                randi(100, width() - 100),
+                randi(100, height() - 100)
+            );
+            walls.push(wallPos);
+            
+            add([
+                sprite("wall"),
+                pos(wallPos),
+                scale(1),
+                area(),
+                solid(),
+                "wall"
+            ]);
+        }
+
+        // =================== PLAYER CREATION ===================
+        // Create local player
+        const player = add([
+            sprite("player"),
+            pos(width() / 2, height() / 2),
+            scale(1),
+            area(),
+            body(),
+            health(MAX_HEALTH),
+            {
+                id: null,
+                color: rgb(255, 0, 0),
+                weapon: "pistol",
+                lastShotTime: 0,
+                kills: 0,
+                isDead: false
+            }
+        ]);
+        gameState.localPlayer = player;
+
+        // Update health UI
+        player.onUpdate(() => {
+            document.getElementById("health-fill").style.width = `${player.hp() / MAX_HEALTH * 100}%`;
+        });
+
+        // =================== PLAYER CONTROLS ===================
+        // Movement controls
+        keyDown("left", () => {
+            if (player.isDead) return;
+            player.move(-PLAYER_SPEED, 0);
+            sendPlayerUpdate();
+        });
+        
+        keyDown("right", () => {
+            if (player.isDead) return;
+            player.move(PLAYER_SPEED, 0);
+            sendPlayerUpdate();
+        });
+        
+        keyDown("up", () => {
+            if (player.isDead) return;
+            player.move(0, -PLAYER_SPEED);
+            sendPlayerUpdate();
+        });
+        
+        keyDown("down", () => {
+            if (player.isDead) return;
+            player.move(0, PLAYER_SPEED);
+            sendPlayerUpdate();
+        });
+
+        // Shooting controls
+        mousePress(() => {
+            if (player.isDead) return;
+            shootBullet();
+        });
+
+        // Weapon switching
+        keyPress("1", () => {
+            player.weapon = "pistol";
+            updateWeaponDisplay();
+            sendPlayerUpdate();
+        });
+
+        keyPress("2", () => {
+            player.weapon = "shotgun";
+            updateWeaponDisplay();
+            sendPlayerUpdate();
+        });
+
+        keyPress("3", () => {
+            player.weapon = "rifle";
+            updateWeaponDisplay();
+            sendPlayerUpdate();
+        });
+
+        // Update weapon display
+        function updateWeaponDisplay() {
+            document.getElementById("weapon-display").textContent = `Weapon: ${WEAPONS[player.weapon].name}`;
+        }
+
+        // =================== SHOOTING MECHANICS ===================
+        // Shoot a bullet
+        function shootBullet() {
+            const now = time();
+            const weapon = WEAPONS[player.weapon];
+            
+            if (now - player.lastShotTime < weapon.fireRate) return;
+            
+            player.lastShotTime = now;
+            play("shoot");
+            
+            // For shotgun, shoot multiple bullets with spread
+            if (weapon.bulletCount) {
+                for (let i = 0; i < weapon.bulletCount; i++) {
+                    const spread = rand(-weapon.spread, weapon.spread);
+                    const angle = mousePos().angle(player.pos) + spread;
+                    fireSingleBullet(angle, weapon);
+                }
+            } else {
+                // Single bullet for other weapons
+                const angle = mousePos().angle(player.pos);
+                fireSingleBullet(angle, weapon);
+            }
+        }
+
+        // Fire a single bullet
+        function fireSingleBullet(angle, weapon) {
+            // Create bullet locally
+            const direction = Vec2.fromAngle(angle);
+            const bulletId = `bullet_${player.id}_${Date.now()}_${randi(0, 1000)}`;
+            
+            const bullet = add([
+                sprite("bullet"),
+                pos(player.pos.add(direction.scale(30))),
+                scale(weapon.bulletSize),
+                area(),
+                move(angle, weapon.bulletSpeed),
+                cleanup(),
+                lifespan(2),
+                {
+                    id: bulletId,
+                    playerId: player.id,
+                    damage: weapon.damage,
+                    angle: angle
+                },
+                "bullet"
+            ]);
+            
+            // Send bullet info to other players
+            const bulletData = {
+                type: 'bullet',
+                id: bulletId,
+                playerId: player.id,
+                pos: { x: bullet.pos.x, y: bullet.pos.y },
+                angle: angle,
+                damage: weapon.damage,
+                weaponType: player.weapon,
+                bulletSize: weapon.bulletSize
+            };
+            
+            broadcastToAll(bulletData);
+        }
+
+        // =================== NETWORK MESSAGE HANDLING ===================
+        // Handle data received from peers
+        function handlePeerData(peerId, data) {
+            switch(data.type) {
+                case 'player-update':
+                    updateRemotePlayer(peerId, data);
+                    break;
+                    
+                case 'bullet':
+                    handleRemoteBullet(data);
+                    break;
+                    
+                case 'powerup-spawn':
+                    handleRemotePowerupSpawn(data);
+                    break;
+                    
+                case 'powerup-collect':
+                    handleRemotePowerupCollect(data);
+                    break;
+                    
+                case 'player-died':
+                    handleRemotePlayerDeath(data);
+                    break;
+                    
+                case 'game-start':
+                    handleGameStart();
+                    break;
+                    
+                case 'kill-feed':
+                    updateKillFeed(data.message);
+                    break;
+                    
+                case 'player-list':
+                    if (!isHost) { // Only clients process this
+                        updateConnectedPlayers(data.players);
+                    }
+                    break;
+                    
+                case 'ping':
+                    // Reply with pong
+                    const conn = connections[peerId];
+                    if (conn && conn.open) {
+                        conn.send({
+                            type: 'pong',
+                            time: data.time
+                        });
+                    }
+                    break;
+                    
+                case 'pong':
+                    // Calculate ping
+                    const pingTime = Date.now() - data.time;
+                    lastPingTime[peerId] = pingTime;
+                    break;
+            }
+        }
+
+        // Update the list of connected players from the host
+        function updateConnectedPlayers(playerIds) {
+            // For each player in the list, make sure we have a connection
+            playerIds.forEach(id => {
+                if (id !== peer.id && !connections[id] && !gameState.players[id]) {
+                    createRemotePlayer(id);
+                }
+            });
+            
+            updatePlayersList();
+            updatePlayersCount();
+        }
+
+        // =================== PLAYER MANAGEMENT ===================
+        // Send player update to all connected peers
+        function sendPlayerUpdate(specificConn = null) {
+            const playerData = {
+                type: 'player-update',
+                id: player.id,
+                pos: { x: player.pos.x, y: player.pos.y },
+                hp: player.hp(),
+                weapon: player.weapon,
+                kills: player.kills,
+                isDead: player.isDead
+            };
+            
+            if (specificConn) {
+                specificConn.send(playerData);
+            } else {
+                broadcastToAll(playerData);
+            }
+        }
+
+        // Broadcast data to all connections
+        function broadcastToAll(data) {
+            Object.values(connections).forEach(conn => {
+                if (conn.open) {
+                    conn.send(data);
+                }
+            });
+        }
+
+        // Create a game object for a remote player
+        function createRemotePlayer(id) {
+            if (gameState.players[id]) return;
+            
+            console.log('Creating remote player:', id);
+            
+            const remotePlayer = add([
+                sprite("player"),
+                pos(width() / 2, height() / 2),
+                scale(1),
+                area(),
+                health(MAX_HEALTH),
+                {
+                    id: id,
+                    weapon: "pistol",
+                    kills: 0,
+                    isDead: false
+                },
+                "player"
+            ]);
+            
+            // Add health bar for remote player
+            const healthBar = add([
+                rect(50, 5),
+                pos(0, 0),
+                color(0, 255, 0)
+            ]);
+            
+            healthBar.onUpdate(() => {
+                healthBar.pos = remotePlayer.pos.sub(vec2(25, 40));
+                healthBar.width = 50 * (remotePlayer.hp() / MAX_HEALTH);
+            });
+            
+            gameState.players[id] = remotePlayer;
+        }
+
+        // Update remote player position
+        function updateRemotePlayer(id, data) {
+            if (!gameState.players[id]) {
+                createRemotePlayer(id);
+            }
+            
+            const remotePlayer = gameState.players[id];
+            remotePlayer.pos.x = data.pos.x;
+            remotePlayer.pos.y = data.pos.y;
+            
+            // Update health and other properties
+            if (data.hp !== undefined) {
+                remotePlayer.hp = data.hp;
+            }
+            
+            if (data.weapon !== undefined) {
+                remotePlayer.weapon = data.weapon;
+            }
+            
+            if (data.kills !== undefined) {
+                remotePlayer.kills = data.kills;
+            }
+            
+            if (data.isDead !== undefined) {
+                remotePlayer.isDead = data.isDead;
+                
+                // If player is dead, make them transparent
+                if (remotePlayer.isDead) {
+                    remotePlayer.opacity = 0.2;
+                }
+            }
+        }
+
+        // Remove a remote player
+        function removeRemotePlayer(id) {
+            if (gameState.players[id]) {
+                destroy(gameState.players[id]);
+                delete gameState.players[id];
+            }
+        }
+
+        // =================== COLLISION DETECTION ===================
+        // Bullet collision with wall
+        onCollide("bullet", "wall", (bullet, wall) => {
+            destroy(bullet);
+            bulletHitEffect(bullet.pos);
+        });
+
+        // Bullet collision with player
+        onCollide("bullet", "player", (bullet, target) => {
+            // Only process if bullet doesn't belong to the hit player
+            if (bullet.playerId !== target.id) {
+                // Apply damage
+                target.hurt(bullet.damage);
+                play("hit");
+                
+                // Create hit effect
+                bulletHitEffect(bullet.pos);
+                
+                // Destroy bullet
+                destroy(bullet);
+                
+                // If target is local player, send health update
+                if (target === player) {
+                    sendPlayerUpdate();
+                    
+                    // Check if player died
+                    if (target.hp() <= 0 && !target.isDead) {
+                        playerDied(bullet.playerId);
+                    }
+                }
+            }
+        });
+
+        // Player collision with powerups
+        onCollide("player", "powerup", (p, powerup) => {
+            if (p === player) {
+                collectPowerup(powerup);
+            }
+        });
+
+        // Create bullet hit effect
+        function bulletHitEffect(position) {
+            const hit = add([
+                pos(position),
+                circle(10),
+                color(255, 255, 0),
+                lifespan(0.1),
+                scale(1)
+            ]);
+            
+            hit.onUpdate(() => {
+                hit.scale = hit.scale.add(vec2(0.5, 0.5));
+                hit.color.r = hit.color.r - 5;
+                hit.color.g = hit.color.g - 5;
+                hit.opacity = hit.opacity - 0.1;
+            });
+        }
+
+        // =================== REMOTE GAME EVENT HANDLERS ===================
+        // Handle remote bullet creation
+        function handleRemoteBullet(data) {
+            // Don't recreate own bullets
+            if (data.playerId === player.id) return;
+            
+            // Create bullet from remote player
+            add([
+                sprite("bullet"),
+                pos(data.pos.x, data.pos.y),
+                scale(data.bulletSize || 1),
+                area(),
+                move(data.angle, BULLET_SPEED),
+                cleanup(),
+                lifespan(2),
+                {
+                    id: data.id,
+                    playerId: data.playerId,
+                    damage: data.damage
+                },
+                "bullet"
+            ]);
+        }
+
+        // Handle remote powerup spawn
+        function handleRemotePowerupSpawn(data) {
+            // Check if powerup already exists
+            const existingPowerup = get("powerup").find(p => p.id === data.id);
+            if (existingPowerup) return;
+            
+            // Determine effect based on powerup type
+            let effect;
+            
+            if (data.powerupType === "health") {
+                effect = () => {
+                    player.heal(25);
+                    play("powerup");
+                    updateKillFeed(`${player.id} found a Medikit`);
+                };
+            } else if (data.powerupType === "shotgun") {
+                effect = () => {
+                    player.weapon = "shotgun";
+                    updateWeaponDisplay();
+                    play("powerup");
+                    updateKillFeed(`${player.id} found a Shotgun`);
+                };
+            } else if (data.powerupType === "rifle") {
+                effect = () => {
+                    player.weapon = "rifle";
+                    updateWeaponDisplay();
+                    play("powerup");
+                    updateKillFeed(`${player.id} found an Assault Rifle`);
+                };
+            }
+            
+            // Create the powerup
+            add([
+                sprite(data.spriteName),
+                pos(data.pos.x, data.pos.y),
+                area(),
+                scale(1),
+                {
+                    id: data.id,
+                    type: data.powerupType,
+                    effect: effect
+                },
+                "powerup"
+            ]);
+        }
+
+        // Handle remote powerup collection
+        function handleRemotePowerupCollect(data) {
+            const powerup = get("powerup").find(p => p.id === data.id);
+            if (powerup) {
+                // Show collection message
+                if (data.powerupType === "health") {
+                    updateKillFeed(`${data.playerId} found a Medikit`);
+                } else if (data.powerupType === "shotgun") {
+                    updateKillFeed(`${data.playerId} found a Shotgun`);
+                } else if (data.powerupType === "rifle") {
+                    updateKillFeed(`${data.playerId} found an Assault Rifle`);
+                }
+                
+                destroy(powerup);
+            }
+        }
+
+        // Handle remote player death
+        function handleRemotePlayerDeath(data) {
+            const remotePlayer = gameState.players[data.id];
+            
+            if (remotePlayer && !remotePlayer.isDead) {
+                remotePlayer.isDead = true;
+                
+                // Visual effect
+                const explosion = add([
+                    pos(remotePlayer.pos),
+                    circle(10),
+                    color(255, 0, 0),
+                    lifespan(1),
+                    scale(1)
+                ]);
+                
+                explosion.onUpdate(() => {
+                    explosion.scale = explosion.scale.add(vec2(1, 1));
+                    explosion.opacity = explosion.opacity - 0.02;
+                });
+                
+                play("explosion");
+                
+                // Hide remote player
+                remotePlayer.opacity = 0.2;
+                
+                // Update players count
+                updatePlayersCount();
+                
+                // Show kill feed message
+                if (data.killerID === "STORM") {
+                    updateKillFeed(`${data.id} was eliminated by the storm`);
+                } else if (data.killerID === player.id) {
+                    player.kills++;
+                    updateKillFeed(`${player.id} eliminated ${data.id}`);
+                } else {
+                    updateKillFeed(`${data.killerID} eliminated ${data.id}`);
+                }
+            }
+        }
+
+        // =================== POWERUPS & LOOT ===================
+        // Spawn a powerup
+        function spawnPowerup() {
+            const types = ["health", "shotgun", "rifle"];
+            const type = choose(types);
+            
+            let spriteName;
+            let effect;
+            
+            if (type === "health") {
+                spriteName = "medikit";
+                effect = () => {
+                    player.heal(25);
+                    play("powerup");
+                    updateKillFeed(`${player.id} found a Medikit`);
+                };
+            } else if (type === "shotgun") {
+                spriteName = "shotgun";
+                effect = () => {
+                    player.weapon = "shotgun";
+                    updateWeaponDisplay();
+                    play("powerup");
+                    updateKillFeed(`${player.id} found a Shotgun`);
+                };
+            } else if (type === "rifle") {
+                spriteName = "rifle";
+                effect = () => {
+                    player.weapon = "rifle";
+                    updateWeaponDisplay();
+                    play("powerup");
+                    updateKillFeed(`${player.id} found an Assault Rifle`);
+                };
+            }
+            
+            // Find a position not inside walls
+            let powerupPos;
+            let validPosition = false;
+            
+            while (!validPosition) {
+                powerupPos = vec2(
+                    randi(100, width() - 100),
+                    randi(100, height() - 100)
+                );
+                
+                // Check if this position collides with walls
+                validPosition = true;
+                for (const wallPos of walls) {
+                    if (powerupPos.dist(wallPos) < 50) {
+                        validPosition = false;
+                        break;
+                    }
+                }
+            }
+            
+            const powerupId = `powerup_${Date.now()}_${randi(0, 1000)}`;
+            
+            const powerup = add([
+                sprite(spriteName),
+                pos(powerupPos),
+                area(),
+                scale(1),
+                {
+                    id: powerupId,
+                    type: type,
+                    effect: effect
+                },
+                "powerup"
+            ]);
+            
+            powerup.onUpdate(() => {
+                powerup.scale = vec2(1 + Math.sin(time() * 5) * 0.1, 1 + Math.sin(time() * 5) * 0.1);
+            });
+            
+            // Send powerup info to other players
+            const powerupData = {
+                type: 'powerup-spawn',
+                id: powerupId,
+                powerupType: type,
+                pos: { x: powerupPos.x, y: powerupPos.y },
+                spriteName: spriteName
+            };
+            
+            broadcastToAll(powerupData);
+            
+            return powerup;
+        }
+
+        // Collect a powerup
+        function collectPowerup(powerup) {
+            // Call the effect function
+            powerup.effect();
+            
+            // Send collection to other players
+            const collectData = {
+                type: 'powerup-collect',
+                id: powerup.id,
+                playerId: player.id,
+                powerupType: powerup.type
+            };
+            
+            broadcastToAll(collectData);
+            
+            // Remove the powerup
+            destroy(powerup);
+        }
+
+        // =================== STORM MECHANICS ===================
+        // Initialize storm
+        function initStorm() {
+            gameState.storm.active = true;
+            gameState.storm.shrinkStartTime = time();
+            
+            // Add visual representation of the storm
+            const stormCircle = add([
+                circle(gameState.storm.radius),
+                pos(gameState.storm.center),
+                outline(5, rgb(0.5, 0, 0.8)),
+                {
+                    radius: gameState.storm.radius
+                }
+            ]);
+            
+            // Update storm circle size
+            stormCircle.onUpdate(() => {
+                // If the storm is active, shrink it
+                if (gameState.storm.active) {
+                    const elapsed = time() - gameState.storm.shrinkStartTime;
+                    const progress = Math.min(elapsed / gameState.storm.shrinkDuration, 1);
+                    
+                    // Update the storm radius
+                    gameState.storm.radius = lerp(
+                        gameState.storm.radius,
+                        gameState.storm.targetRadius,
+                        progress
+                    );
+                    
+                    // Update the visual storm circle
+                    stormCircle.radius = gameState.storm.radius;
+                }
+                
+                // Update timer UI
+                updateStormTimer();
+                
+                // Apply storm damage to player if outside
+                if (player.pos.dist(gameState.storm.center) > gameState.storm.radius && !player.isDead) {
+                    player.hurt(dt() * gameState.storm.damagePerSec);
+                    
+                    if (player.hp() <= 0 && !player.isDead) {
+                        updateKillFeed(`${player.id} was eliminated by the storm`);
+                        playerDied("STORM");
+                    }
+                }
+            });
+        }
+
+        // Update storm timer
+        function updateStormTimer() {
+            const timerElement = document.getElementById("timer");
+            
+            if (!gameState.storm.active) {
+                timerElement.textContent = "waiting for players";
+                return;
+            }
+            
+            const elapsed = time() - gameState.storm.shrinkStartTime;
+            const remaining = Math.max(0, gameState.storm.shrinkDuration - elapsed);
+            
+            // If storm has finished shrinking, start a new phase
+            if (remaining <= 0 && gameState.storm.radius > 100) {
+                // Start next storm phase
+                gameState.storm.shrinkStartTime = time();
+                gameState.storm.targetRadius = gameState.storm.targetRadius / 1.5;
+                gameState.storm.damagePerSec += 1;
+                
+                timerElement.textContent = `Next: ${Math.floor(gameState.storm.shrinkDuration)}s`;
+            } else {
+                timerElement.textContent = `${Math.floor(remaining)}s`;
+            }
+        }
+
+        // =================== PLAYER DEATH ===================
+        // Handle player death
+        function playerDied(killerID) {
+            if (player.isDead) return;
+            
+            player.isDead = true;
+            
+            if (killerID !== "STORM") {
+                // Find killer name
+                let killerName = killerID;
+                if (gameState.players[killerID]) {
+                    killerName = killerID;
+                    
+                    // Increment killer's kill count if they exist in our state
+                    if (gameState.players[killerID]) {
+                        gameState.players[killerID].kills++;
+                    }
+                }
+                
+                updateKillFeed(`${killerName} eliminated ${player.id}`);
+            }
+            
+            // Visual effect for death
+            const explosion = add([
+                pos(player.pos),
+                circle(10),
+                color(255, 0, 0),
+                lifespan(1),
+                scale(1)
+            ]);
+            
+            explosion.onUpdate(() => {
+                explosion.scale = explosion.scale.add(vec2(1, 1));
+                explosion.opacity = explosion.opacity - 0.02;
+            });
+            
+            play("explosion");
+            
+            // Send death info to other players
+            const deathData = {
+                type: 'player-died',
+                id: player.id,
+                killerID: killerID
+            };
+            
+            broadcastToAll(deathData);
+            
+            // Hide player locally
+            player.opacity = 0.2;
+            
+            // Update players count
+            updatePlayersCount();
+            
+            // Show game over message
+            add([
+                text("ELIMINATED\nSpectating...", { size: 32 }),
+                pos(center()),
+                origin("center"),
+                color(255, 0, 0)
+            ]);
+        }
+
+        // =================== UI UPDATES ===================
+        // Update status message
+        function updateStatus(message) {
+            document.getElementById("status").textContent = `Status: ${message}`;
+        }
+
+        // Update the list of connected players
+        function updatePlayersList() {
+            const playersElement = document.getElementById('players');
+            playersElement.innerHTML = '';
+            
+            // Add local player
+            const localPlayerItem = document.createElement('div');
+            localPlayerItem.className = 'player-item';
+            localPlayerItem.textContent = `${player.id} (YOU) - ${player.kills} kills`;
+            if (player.isDead) {
+                localPlayerItem.textContent += ' [DEAD]';
+                localPlayerItem.style.opacity = '0.5';
+            }
+            playersElement.appendChild(localPlayerItem);
+            
+            // Add remote players
+            Object.keys(gameState.players).forEach(id => {
+                const playerItem = document.createElement('div');
+                playerItem.className = 'player-item';
+                
+                const remotePlayer = gameState.players[id];
+                playerItem.textContent = `${id} - ${remotePlayer.kills} kills`;
+                
+                if (remotePlayer.isDead) {
+                    playerItem.textContent += ' [DEAD]';
+                    playerItem.style.opacity = '0.5';
+                }
+                
+                playersElement.appendChild(playerItem);
+            });
+        }
+
+        // Update players count
+        function updatePlayersCount() {
+            const totalPlayers = Object.keys(gameState.players).length + 1; // +1 for local player
+            const alivePlayers = Object.values(gameState.players).filter(p => !p.isDead).length + (player.isDead ? 0 : 1);
+            
+            document.getElementById('players-count').textContent = `${alivePlayers}/${totalPlayers}`;
+            
+            // Check for winner
+            checkWinner(alivePlayers);
+        }
+
+        // Check if there's a winner
+        function checkWinner(alivePlayers) {
+            if (gameState.gameStarted && alivePlayers === 1) {
+                // If local player is the only one alive
+                if (!player.isDead && Object.values(gameState.players).every(p => p.isDead)) {
+                    add([
+                        text("VICTORY ROYALE!", { size: 48 }),
+                        pos(center()),
+                        origin("center"),
+                        color(255, 255, 0)
+                    ]);
+                    
+                    play("powerup");
+                }
+            }
+        }
+
+        // Update the kill feed
+        function updateKillFeed(message) {
+            const killFeed = document.getElementById('kill-feed');
+            
+            const messageElement = document.createElement('div');
+            messageElement.textContent = message;
+            messageElement.style.marginBottom = '5px';
+            messageElement.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            messageElement.style.padding = '3px';
+            messageElement.style.borderRadius = '3px';
+            
+            killFeed.appendChild(messageElement);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                if (messageElement.parentNode === killFeed) {
+                    killFeed.removeChild(messageElement);
+                }
+            }, 5000);
+            
+            // Share kill feed with other players
+            broadcastToAll({
+                type: 'kill-feed',
+                message: message
+            });
+        }
+
+        // =================== GAME MANAGEMENT ===================
+        // Check if game should start
+        function checkGameStart() {
+            // Only host initiates game start
+            if (!isHost) return;
+            
+            const totalPlayers = Object.keys(connections).length + 1; // +1 for local player
+            
+            if (totalPlayers >= 2 && !gameState.gameStarted) {
+                gameState.gameStarted = true;
+                
+                // Tell other players game is starting
+                broadcastToAll({
+                    type: 'game-start'
+                });
+                
+                handleGameStart();
+            }
+        }
+
+        // Start the game
+        function handleGameStart() {
+            if (gameState.gameStarted) return;
+            
+            gameState.gameStarted = true;
+            updateStatus("Game started!");
+            
+            // Initialize storm
+            initStorm();
+            
+            // Spawn initial powerups
+            for (let i = 0; i < 5; i++) {
+                spawnPowerup();
+            }
+            
+            // Start spawning more powerups periodically
+            loop(10, () => {
+                if (gameState.gameStarted) {
+                    spawnPowerup();
+                }
+            });
+            
+            add([
+                text("BATTLE ROYALE\nSTARTED!", { size: 48 }),
+                pos(center()),
+                origin("center"),
+                color(255, 255, 0),
+                lifespan(3)
+            ]);
+        }
+
+        // =================== GAME LOOP ===================
+        player.onUpdate(() => {
+            // Keep player within screen bounds
+            if (player.pos.x < 0) player.pos.x = 0;
+            if (player.pos.x > width()) player.pos.x = width();
+            if (player.pos.y < 0) player.pos.y = 0;
+            if (player.pos.y > height()) player.pos.y = height();
+            
+            // Update players list occasionally to avoid UI updates every frame
+            if (Math.floor(time() * 5) % 10 === 0) {
+                updatePlayersList();
+            }
+        });
+    </script>
+</body>
+</html>
