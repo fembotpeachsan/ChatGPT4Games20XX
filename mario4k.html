@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mario RPG Multiplayer (Kaboom + PeerJS)</title>
+  <script src="https://unpkg.com/kaboom@3000.1.17/dist/kaboom.js"></script>
+  <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
+</head>
+<body>
+<script>
+
+// Initialize Kaboom
+kaboom({ width: 640, height: 480, background: [0, 0, 0] });
+
+loadSprite("mario", "https://i.imgur.com/Wb1qfhK.png");
+
+// Multiplayer Setup
+const peer = new Peer();
+let conn;
+
+peer.on('open', (id) => {
+    console.log("Your peer ID is: " + id);
+    const peerID = prompt("Enter peer ID to connect or leave blank to wait:");
+
+    if (peerID) {
+        conn = peer.connect(peerID);
+        setupConnection();
+    }
+});
+
+peer.on('connection', (connection) => {
+    conn = connection;
+    setupConnection();
+});
+
+function setupConnection() {
+    conn.on('open', () => console.log("Connected to peer!"));
+
+    conn.on('data', (data) => {
+        if (data.type === 'move') {
+            enemy.moveTo(data.x, data.y);
+        }
+    });
+}
+
+// RPG Character
+const player = add([
+    sprite("mario"),
+    pos(120, 80),
+    area(),
+    solid(),
+]);
+
+// Peer Player (Enemy or Ally)
+const enemy = add([
+    sprite("mario"),
+    color(255, 100, 100),
+    pos(300, 200),
+    area(),
+    solid(),
+]);
+
+// Movement
+onKeyDown("left", () => { player.move(-120, 0); sendPos(); });
+onKeyDown("right", () => { player.move(120, 0); sendPos(); });
+onKeyDown("up", () => { player.move(0, -120); sendPos(); });
+onKeyDown("down", () => { player.move(0, 120); sendPos(); });
+
+function sendPos() {
+    if (conn && conn.open) {
+        conn.send({ type: 'move', x: player.pos.x, y: player.pos.y });
+    }
+}
+
+// Basic Interaction
+player.onCollide(enemy, () => {
+    addKaboom(enemy.pos);
+    shake(5);
+    enemy.pos = vec2(rand(100, 500), rand(100, 400));
+});
+
+</script>
+</body>
+</html>
