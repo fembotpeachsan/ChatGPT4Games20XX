@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Super Mario Adventures Online</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Super Mario', Arial, sans-serif;
+            background-color: #000;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .ui-panel {
+            pointer-events: auto;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 3px solid #f8d800;
+            border-radius: 10px;
+            color: white;
+            padding: 10px;
+        }
+        #stats-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 180px;
+        }
+        #chat-panel {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 350px;
+            height: 150px;
+        }
+        #chat-messages {
+            height: 120px;
+            overflow-y: auto;
+            margin-bottom: 5px;
+        }
+        #chat-input {
+            width: 100%;
+            box-sizing: border-box;
+            background-color: rgba(255, 255, 255, 0.8);
+            border: 2px solid #f8d800;
+            color: black;
+            pointer-events: auto;
+        }
+        #character-select {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 300px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .character-option {
+            display: inline-block;
+            margin: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 64px;
+            height: 64px;
+        }
+        .character-option:hover {
+            transform: scale(1.2);
+        }
+        .character-option img {
+            width: 100%;
+            height: 100%;
+        }
+        .character-option.selected {
+            border: 3px solid #f8d800;
+        }
+        #quest-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 250px;
+        }
+        #inventory-button {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 3px solid #f8d800;
+            color: white;
+            padding: 5px 10px;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        #inventory-panel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 300px;
+            display: none;
+        }
+        .inventory-slot {
+            width: 48px;
+            height: 48px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 2px solid #f8d800;
+            display: inline-block;
+            margin: 5px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #333;
+            margin-top: 2px;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #f00;
+        }
+        #weather-effect {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    
+    <div id="ui-overlay">
+        <div id="character-select" class="ui-panel">
+            <h2>Choose Your Character</h2>
+            <div>
+                <div class="character-option selected" data-character="mario">
+                    <img src="https://i.imgur.com/Wb1qfhK.png" alt="Mario">
+                </div>
+                <div class="character-option" data-character="luigi">
+                    <img src="https://i.imgur.com/jyFMy9W.png" alt="Luigi">
+                </div>
+                <div class="character-option" data-character="toad">
+                    <img src="https://i.imgur.com/Ehdo3JP.png" alt="Toad">
+                </div>
+                <div class="character-option" data-character="yoshi">
+                    <img src="https://i.imgur.com/XdFDP06.png" alt="Yoshi">
+                </div>
+            </div>
+            <button id="start-game-btn" style="margin-top: 20px;">Start Adventure!</button>
+        </div>
+        
+        <div id="stats-panel" class="ui-panel" style="display: none;">
+            <div id="player-name">Player</div>
+            <div>Level: <span id="player-level">1</span></div>
+            <div>HP: <span id="player-hp">100</span>/<span id="player-maxhp">100</span></div>
+            <div class="progress-bar"><div id="hp-bar" class="progress-fill" style="width: 100%; background-color: #f00;"></div></div>
+            <div>FP: <span id="player-fp">50</span>/<span id="player-maxfp">50</span></div>
+            <div class="progress-bar"><div id="fp-bar" class="progress-fill" style="width: 100%; background-color: #00f;"></div></div>
+            <div>XP: <span id="player-xp">0</span>/<span id="player-nextlevel">100</span></div>
+            <div class="progress-bar"><div id="xp-bar" class="progress-fill" style="width: 0%; background-color: #0f0;"></div></div>
+            <div style="margin-top: 5px;">
+                <div>POW: <span id="player-pow">5</span></div>
+                <div>DEF: <span id="player-def">3</span></div>
+                <div>SPEED: <span id="player-speed">5</span></div>
+                <div>STACHE: <span id="player-stache">1</span></div>
+            </div>
+        </div>
+        
+        <div id="chat-panel" class="ui-panel" style="display: none;">
+            <div id="chat-messages"></div>
+            <input id="chat-input" type="text" placeholder="Press Enter to chat..." />
+        </div>
+        
+        <div id="quest-panel" class="ui-panel" style="display: none;">
+            <h3>Current Quest</h3>
+            <div id="quest-title">Find the lost Toad</div>
+            <div id="quest-description">A Toad has gone missing in the Mushroom Kingdom. Find him!</div>
+            <div>Progress: <span id="quest-progress">0</span>/<span id="quest-target">1</span></div>
+            <div class="progress-bar"><div id="quest-bar" class="progress-fill" style="width: 0%; background-color: #ff0;"></div></div>
+        </div>
+        
+        <button id="inventory-button" style="display: none;">Inventory</button>
+        
+        <div id="inventory-panel" class="ui-panel">
+            <h3>Inventory</h3>
+            <div id="inventory-slots">
+                <div class="inventory-slot" data-slot="0"></div>
+                <div class="inventory-slot" data-slot="1"></div>
+                <div class="inventory-slot" data-slot="2"></div>
+                <div class="inventory-slot" data-slot="3"></div>
+                <div class="inventory-slot" data-slot="4"></div>
+                <div class="inventory-slot" data-slot="5"></div>
+                <div class="inventory-slot" data-slot="6"></div>
+                <div class="inventory-slot" data-slot="7"></div>
+                <div class="inventory-slot" data-slot="8"></div>
+                <div class="inventory-slot" data-slot="9"></div>
+                <div class="inventory-slot" data-slot="10"></div>
+                <div class="inventory-slot" data-slot="11"></div>
+                <div class="inventory-slot" data-slot="12"></div>
+                <div class="inventory-slot" data-slot="13"></div>
+                <div class="inventory-slot" data-slot="14"></div>
+                <div class="inventory-slot" data-slot="15"></div>
+            </div>
+            <button id="close-inventory" style="margin-top: 10px;">Close</button>
+        </div>
+        
+        <div id="weather-effect"></div>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/kaboom@3000.0.8/dist/kaboom.js"></script>
+    <script>
+        // Game state
+        const gameState = {
+            player: { 
+                id: null, 
+                character: "mario", 
+                name: "Player",
+                x: 120, 
+                y: 80, 
+                level: 1, 
+                hp: 100, 
+                maxHp: 100,
+                fp: 50,
+                maxFp: 50,
+                xp: 0,
+                nextLevelXp: 100,
+                pow: 5,
+                def: 3,
+                speed: 5,
+                stache: 1,
+                inventory: Array(16).fill(null)
+            },
+            otherPlayers: {},
+            time: {
+                cycle: 0, // 0-1, 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
+                speed: 0.001 // Speed of day/night cycle
+            },
+            weather: "clear", // clear, rain, snow
+            weatherChance: 0.001, // Chance of weather changing per frame
+            activeQuest: {
+                title: "Find the lost Toad",
+                description: "A Toad has gone missing in the Mushroom Kingdom. Find him!",
+                progress: 0,
+                target: 1
+            },
+            chatMessages: [],
+            gameStarted: false
+        };
+
+        // Networking
+        let peer, playerObj, connections = [];
+        const PEER_CONFIG = { host: 'peerjs-server.herokuapp.com', secure: true, port: 443 };
+
+        // Start game after character selection
+        document.getElementById("start-game-btn").addEventListener("click", () => {
+            const selectedChar = document.querySelector('.character-option.selected').dataset.character;
+            gameState.player.character = selectedChar;
+            
+            document.getElementById("character-select").style.display = "none";
+            document.getElementById("stats-panel").style.display = "block";
+            document.getElementById("chat-panel").style.display = "block";
+            document.getElementById("quest-panel").style.display = "block";
+            document.getElementById("inventory-button").style.display = "block";
+            
+            gameState.gameStarted = true;
+            startGame();
+            updateUI();
+        });
+
+        // Character selection
+        document.querySelectorAll('.character-option').forEach(option => {
+            option.addEventListener('click', () => {
+                document.querySelectorAll('.character-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                option.classList.add('selected');
+            });
+        });
+
+        // Inventory toggle
+        document.getElementById("inventory-button").addEventListener("click", () => {
+            document.getElementById("inventory-panel").style.display = "block";
+        });
+
+        document.getElementById("close-inventory").addEventListener("click", () => {
+            document.getElementById("inventory-panel").style.display = "none";
+        });
+
+        // Chat functionality
+        document.getElementById("chat-input").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                const message = e.target.value.trim();
+                if (message) {
+                    addChatMessage(gameState.player.name, message);
+                    broadcast({ type: 'chat', id: gameState.player.id, name: gameState.player.name, message });
+                    e.target.value = "";
+                }
+            }
+        });
+
+        function addChatMessage(name, message) {
+            const msgElement = document.createElement("div");
+            msgElement.innerHTML = `<strong>${name}:</strong> ${message}`;
+            document.getElementById("chat-messages").appendChild(msgElement);
+            document.getElementById("chat-messages").scrollTop = document.getElementById("chat-messages").scrollHeight;
+            
+            gameState.chatMessages.push({ name, message, time: Date.now() });
+            if (gameState.chatMessages.length > 50) {
+                gameState.chatMessages.shift();
+            }
+        }
+
+        function startGame() {
+            peer = new Peer(PEER_CONFIG);
+            
+            peer.on('open', (id) => {
+                console.log('My ID: ' + id);
+                gameState.player.id = id;
+                initKaboom();
+            });
+            
+            peer.on('connection', (conn) => {
+                connections.push(conn);
+                setupConnection(conn);
+            });
+            
+            peer.on('error', (err) => {
+                console.error('PeerJS error:', err);
+                setTimeout(startGame, 3000);
+            });
+        }
+
+        function initKaboom() {
+            kaboom({
+                width: 640,
+                height: 480,
+                background: [0, 0, 0],
+                canvas: document.createElement("canvas"),
+                global: true
+            });
+            document.getElementById("game-container").appendChild(canvas);
+            
+            loadSprites();
+            createWorld();
+            setupInput();
+            
+            onUpdate(() => {
+                updateDayNightCycle();
+                updateWeather();
+                updatePlayerStats();
+            });
+        }
+
+        function loadSprites() {
+            loadSprite("mario", "https://i.imgur.com/Wb1qfhK.png");
+            loadSprite("luigi", "https://i.imgur.com/jyFMy9W.png");
+            loadSprite("toad", "https://i.imgur.com/Ehdo3JP.png");
+            loadSprite("yoshi", "https://i.imgur.com/XdFDP06.png");
+            loadSprite("goomba", "https://i.imgur.com/iTpNpkY.png");
+            loadSprite("koopa", "https://i.imgur.com/XMVJoHQ.png");
+            loadSprite("coin", "https://i.imgur.com/8ayJsRY.png");
+            loadSprite("mushroom", "https://i.imgur.com/OUs7L1Z.png");
+            loadSprite("flower", "https://i.imgur.com/q0X4YwC.png");
+            loadSprite("star", "https://i.imgur.com/4q8uoM0.png");
+            loadSprite("block", "https://i.imgur.com/TNdWB7C.png");
+            loadSprite("pipe", "https://i.imgur.com/uILRMJV.png");
+            loadSprite("castle", "https://i.imgur.com/XVseIoP.png");
+        }
+
+        function createWorld() {
+            // Add background
+            add([
+                rect(width(), height()),
+                color(100, 150, 255),
+                z(-10)
+            ]);
+            
+            // Add ground
+            for (let x = 0; x < width(); x += 32) {
+                add([
+                    sprite("block"),
+                    pos(x, height() - 32),
+                    area(),
+                    solid(),
+                    "ground"
+                ]);
+            }
+            
+            // Add some platforms
+            const platforms = [
+                { x: 100, y: 350, width: 3 },
+                { x: 300, y: 300, width: 4 },
+                { x: 500, y: 250, width: 2 }
+            ];
+            
+            platforms.forEach(platform => {
+                for (let i = 0; i < platform.width; i++) {
+                    add([
+                        sprite("block"),
+                        pos(platform.x + i * 32, platform.y),
+                        area(),
+                        solid(),
+                        "platform"
+                    ]);
+                }
+            });
+            
+            // Add castle (quest objective)
+            add([
+                sprite("castle"),
+                pos(550, height() - 90),
+                area(),
+                "castle",
+                "questTarget"
+            ]);
+            
+            // Add some coins
+            for (let i = 0; i < 10; i++) {
+                add([
+                    sprite("coin"),
+                    pos(randi(100, width() - 100), randi(100, height() - 100)),
+                    area(),
+                    "coin"
+                ]);
+            }
+            
+            // Add some enemies
+            for (let i = 0; i < 5; i++) {
+                add([
+                    sprite("goomba"),
+                    pos(randi(100, width() - 100), height() - 64),
+                    area(),
+                    body(),
+                    patrol(100),
+                    "enemy",
+                    "goomba"
+                ]);
+            }
+            
+            // Add player
+            playerObj = add([
+                sprite(gameState.player.character),
+                pos(gameState.player.x, gameState.player.y),
+                area(),
+                body(),
+                "player"
+            ]);
+            
+            // Collisions
+            playerObj.onCollide("coin", (coin) => {
+                addXP(10);
+                coin.destroy();
+                add([
+                    text("+10 XP", { size: 12 }),
+                    pos(coin.pos),
+                    lifespan(1),
+                    move(UP, 100)
+                ]);
+                
+                // Add to inventory
+                addToInventory("coin");
+            });
+            
+            playerObj.onCollide("enemy", (enemy) => {
+                if (playerObj.pos.y < enemy.pos.y - 10) {
+                    // Jump on enemy
+                    addXP(20);
+                    enemy.destroy();
+                    playerObj.jump(300);
+                    add([
+                        text("+20 XP", { size: 12 }),
+                        pos(enemy.pos),
+                        lifespan(1),
+                        move(UP, 100)
+                    ]);
+                } else {
+                    // Take damage
+                    takeDamage(10);
+                }
+            });
+            
+            playerObj.onCollide("questTarget", () => {
+                if (gameState.activeQuest.progress < gameState.activeQuest.target) {
+                    gameState.activeQuest.progress++;
+                    updateQuestUI();
+                    
+                    add([
+                        text("Quest Updated!", { size: 20 }),
+                        pos(width() / 2, height() / 2),
+                        origin("center"),
+                        lifespan(2),
+                        color(255, 255, 0)
+                    ]);
+                    
+                    // Complete quest if all targets found
+                    if (gameState.activeQuest.progress >= gameState.activeQuest.target) {
+                        completeQuest();
+                    }
+                }
+            });
+        }
+
+        function patrol(distance) {
+            let dir = 1;
+            let initialPos = null;
+            
+            return {
+                id: "patrol",
+                require: ["pos"],
+                update(obj) {
+                    if (!initialPos) initialPos = obj.pos.x;
+                    
+                    if (obj.pos.x > initialPos + distance) dir = -1;
+                    if (obj.pos.x < initialPos - distance) dir = 1;
+                    
+                    obj.move(dir * 30, 0);
+                }
+            };
+        }
+
+        function setupInput() {
+            onKeyDown("left", () => movePlayer(-gameState.player.speed, 0));
+            onKeyDown("right", () => movePlayer(gameState.player.speed, 0));
+            onKeyPress("up", () => {
+                if (playerObj.isGrounded()) {
+                    playerObj.jump(350);
+                }
+            });
+            onKeyPress("space", () => {
+                if (playerObj.isGrounded()) {
+                    playerObj.jump(350);
+                }
+            });
+        }
+
+        function updatePlayerStats() {
+            // Natural HP regeneration
+            if (gameState.player.hp < gameState.player.maxHp) {
+                gameState.player.hp = Math.min(gameState.player.maxHp, gameState.player.hp + 0.05);
+                updateUI();
+            }
+            
+            // Natural FP regeneration
+            if (gameState.player.fp < gameState.player.maxFp) {
+                gameState.player.fp = Math.min(gameState.player.maxFp, gameState.player.fp + 0.1);
+                updateUI();
+            }
+        }
+
+        function movePlayer(dx, dy) {
+            gameState.player.x += dx;
+            gameState.player.y += dy;
+            broadcast({ 
+                type: 'move', 
+                id: gameState.player.id, 
+                character: gameState.player.character,
+                x: playerObj.pos.x, 
+                y: playerObj.pos.y 
+            });
+        }
+
+        function takeDamage(amount) {
+            // Reduce damage based on defense
+            const actualDamage = Math.max(1, amount - gameState.player.def);
+            gameState.player.hp = Math.max(0, gameState.player.hp - actualDamage);
+            
+            add([
+                text(`-${actualDamage}`, { size: 16 }),
+                pos(playerObj.pos.x, playerObj.pos.y - 20),
+                lifespan(1),
+                move(UP, 100),
+                color(255, 0, 0)
+            ]);
+            
+            updateUI();
+            
+            // Handle death
+            if (gameState.player.hp <= 0) {
+                respawnPlayer();
+            }
+        }
+
+        function respawnPlayer() {
+            gameState.player.hp = gameState.player.maxHp;
+            playerObj.pos.x = 120;
+            playerObj.pos.y = 80;
+            updateUI();
+            
+            add([
+                text("Respawned!", { size: 20 }),
+                pos(width() / 2, height() / 2),
+                origin("center"),
+                lifespan(2),
+                color(255, 255, 255)
+            ]);
+        }
+
+        function addXP(amount) {
+            gameState.player.xp += amount;
+            
+            // Level up if needed
+            if (gameState.player.xp >= gameState.player.nextLevelXp) {
+                levelUp();
+            }
+            
+            updateUI();
+        }
+
+        function levelUp() {
+            gameState.player.level++;
+            gameState.player.xp -= gameState.player.nextLevelXp;
+            gameState.player.nextLevelXp = Math.floor(gameState.player.nextLevelXp * 1.5);
+            
+            // Increase stats
+            gameState.player.maxHp += 20;
+            gameState.player.hp = gameState.player.maxHp;
+            gameState.player.maxFp += 10;
+            gameState.player.fp = gameState.player.maxFp;
+            gameState.player.pow += 2;
+            gameState.player.def += 1;
+            gameState.player.speed += 1;
+            gameState.player.stache += 1;
+            
+            add([
+                text("Level Up!", { size: 30 }),
+                pos(width() / 2, height() / 2),
+                origin("center"),
+                lifespan(2),
+                color(255, 255, 0)
+            ]);
+            
+            updateUI();
+        }
+
+        function updateDayNightCycle() {
+            gameState.time.cycle += gameState.time.speed;
+            if (gameState.time.cycle > 1) gameState.time.cycle -= 1;
+            
+            // Calculate sky color based on time
+            let skyColor;
+            if (gameState.time.cycle < 0.25) {
+                // Night to sunrise gradient
+                const t = gameState.time.cycle / 0.25;
+                skyColor = rgb(
+                    lerp(20, 170, t),
+                    lerp(20, 200, t),
+                    lerp(50, 255, t)
+                );
+            } else if (gameState.time.cycle < 0.5) {
+                // Sunrise to noon gradient
+                const t = (gameState.time.cycle - 0.25) / 0.25;
+                skyColor = rgb(
+                    lerp(170, 100, t),
+                    lerp(200, 150, t),
+                    lerp(255, 255, t)
+                );
+            } else if (gameState.time.cycle < 0.75) {
+                // Noon to sunset gradient
+                const t = (gameState.time.cycle - 0.5) / 0.25;
+                skyColor = rgb(
+                    lerp(100, 255, t),
+                    lerp(150, 100, t),
+                    lerp(255, 100, t)
+                );
+            } else {
+                // Sunset to night gradient
+                const t = (gameState.time.cycle - 0.75) / 0.25;
+                skyColor = rgb(
+                    lerp(255, 20, t),
+                    lerp(100, 20, t),
+                    lerp(100, 50, t)
+                );
+            }
+            
+            // Update background color
+            every(obj => obj.is("background"), obj => {
+                obj.color = skyColor;
+            });
+            
+            // Add background if it doesn't exist
+            if (!get("background").length) {
+                add([
+                    rect(width(), height()),
+                    color(skyColor),
+                    z(-10),
+                    "background"
+                ]);
+            }
+        }
+
+        function updateWeather() {
+            // Randomly change weather
+            if (rand() < gameState.weatherChance) {
+                const weatherTypes = ["clear", "rain", "snow"];
+                gameState.weather = choose(weatherTypes);
+                updateWeatherEffect();
+            }
+        }
+
+        function updateWeatherEffect() {
+            const weatherElement = document.getElementById("weather-effect");
+            weatherElement.innerHTML = '';
+            
+            if (gameState.weather === "rain") {
+                weatherElement.style.background = "linear-gradient(0deg, rgba(0,0,150,0.2) 0%, rgba(0,0,150,0) 100%)";
+                
+                // Add rain animation
+                for (let i = 0; i < 100; i++) {
+                    const raindrop = document.createElement("div");
+                    raindrop.style.position = "absolute";
+                    raindrop.style.width = "2px";
+                    raindrop.style.height = "20px";
+                    raindrop.style.backgroundColor = "rgba(120, 160, 255, 0.5)";
+                    raindrop.style.left = `${Math.random() * 100}%`;
+                    raindrop.style.top = `${Math.random() * 100}%`;
+                    raindrop.style.animationDuration = `${0.5 + Math.random()}s`;
+                    raindrop.style.animation = "rain linear infinite";
+                    weatherElement.appendChild(raindrop);
+                }
+                
+                // Add rain animation style
+                if (!document.getElementById("weather-style")) {
+                    const style = document.createElement("style");
+                    style.id = "weather-style";
+                    style.textContent = `
+                        @keyframes rain {
+                            0% { transform: translateY(-20px); }
+                            100% { transform: translateY(100vh); }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            } else if (gameState.weather === "snow") {
+                weatherElement.style.background = "linear-gradient(0deg, rgba(150,150,200,0.2) 0%, rgba(150,150,200,0) 100%)";
+                
+                // Add snow animation
+                for (let i = 0; i < 50; i++) {
+                    const snowflake = document.createElement("div");
+                    snowflake.style.position = "absolute";
+                    snowflake.style.width = "5px";
+                    snowflake.style.height = "5px";
+                    snowflake.style.borderRadius = "50%";
+                    snowflake.style.backgroundColor = "rgba(255, 255, 255, 0.8)";
+                    snowflake.style.left = `${Math.random() * 100}%`;
+                    snowflake.style.top = `${Math.random() * 100}%`;
+                    snowflake.style.animationDuration = `${3 + Math.random() * 5}s`;
+                    snowflake.style.animation = "snow linear infinite";
+                    weatherElement.appendChild(snowflake);
+                }
+                
+                // Add snow animation style
+                if (!document.getElementById("weather-style")) {
+                    const style = document.createElement("style");
+                    style.id = "weather-style";
+                    style.textContent = `
+                        @keyframes snow {
+                            0% {
+                                transform: translateY(-10px) translateX(0);
+                            }
+                            25% {
+                                transform: translateY(25vh) translateX(10px);
+                            }
+                            50% {
+                                transform: translateY(50vh) translateX(-10px);
+                            }
+                            75% {
+                                transform: translateY(75vh) translateX(10px);
+                            }
+                            100% {
+                                transform: translateY(100vh) translateX(0);
+                            }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            } else {
+                // Clear weather
+                weatherElement.style.background = "none";
+            }
+        }
+
+        function addToInventory(itemType) {
+            // Find first empty slot
+            const emptySlot = gameState.player.inventory.findIndex(item => item === null);
+            if (emptySlot !== -1) {
+                gameState.player.inventory[emptySlot] = itemType;
+                updateInventoryUI();
+            }
+        }
+
+        function updateInventoryUI() {
+            document.querySelectorAll('.inventory-slot').forEach((slot, index) => {
+                slot.innerHTML = '';
+                const item = gameState.player.inventory[index];
+                if (item) {
+                    const itemImg = document.createElement('img');
+                    itemImg.src = `https://i.imgur.com/8ayJsRY.png`; // Default to coin image
+                    itemImg.style.width = '100%';
+                    itemImg.style.height = '100%';
+                    slot.appendChild(itemImg);
+                }
+            });
+        }
+
+        function completeQuest() {
+            addXP(100);
+            
+            add([
+                text("Quest Complete!", { size: 30 }),
+                pos(width() / 2, height() / 2),
+                origin("center"),
+                lifespan(3),
+                color(255, 255, 0)
+            ]);
+            
+            // Set new quest
+            gameState.activeQuest = {
+                title: "Defeat Goombas",
+                description: "Defeat 5 Goombas that are terrorizing the Mushroom Kingdom.",
+                progress: 0,
+                target: 5
+            };
+            
+            updateQuestUI();
+        }
+
+        function updateQuestUI() {
+            document.getElementById("quest-title").textContent = gameState.activeQuest.title;
+            document.getElementById("quest-description").textContent = gameState.activeQuest.description;
+            document.getElementById("quest-progress").textContent = gameState.activeQuest.progress;
+            document.getElementById("quest-target").textContent = gameState.activeQuest.target;
+            
+            const progressPercent = (gameState.activeQuest.progress / gameState.activeQuest.target) * 100;
+            document.getElementById("quest-bar").style.width = `${progressPercent}%`;
+        }
+
+        function updateUI() {
+            if (!gameState.gameStarted) return;
+            
+            // Update player stats
+            document.getElementById("player-level").textContent = gameState.player.level;
+            document.getElementById("player-hp").textContent = Math.floor(gameState.player.hp);
+            document.getElementById("player-maxhp").textContent = gameState.player.maxHp;
+            document.getElementById("player-fp").textContent = Math.floor(gameState.player.fp);
+            document.getElementById("player-maxfp").textContent = gameState.player.maxFp;
+            document.getElementById("player-xp").textContent = gameState.player.xp;
+            document.getElementById("player-nextlevel").textContent = gameState.player.nextLevelXp;
+            document.getElementById("player-pow").textContent = gameState.player.pow;
+            document.getElementById("player-def").textContent = gameState.player.def;
+            document.getElementById("player-speed").textContent = gameState.player.speed;
+            document.getElementById("player-stache").textContent = gameState.player.stache;
+            
+            // Update progress bars
+            const hpPercent = (gameState.player.hp / gameState.player.maxHp) * 100;
+            document.getElementById("hp-bar").style.width = `${hpPercent}%`;
+            
+            const fpPercent = (gameState.player.fp / gameState.player.maxFp) * 100;
+            document.getElementById("fp-bar").style.width = `${fpPercent}%`;
+            
+            const xpPercent = (gameState.player.xp / gameState.player.nextLevelXp) * 100;
+            document.getElementById("xp-bar").style.width = `${xpPercent}%`;
+            
+            updateQuestUI();
+            updateInventoryUI();
+        }
+
+        function setupConnection(conn) {
+            conn.on('data', (data) => {
+                if (data.type === 'move') {
+                    updateOtherPlayer(data);
+                } else if (data.type === 'chat') {
+                    addChatMessage(data.name, data.message);
+                }
+            });
+            
+            conn.on('open', () => {
+                broadcast({ 
+                    type: 'move', 
+                    id: gameState.player.id, 
+                    character: gameState.player.character,
+                    x: gameState.player.x, 
+                    y: gameState.player.y 
+                });
+            });
+        }
+
+        function broadcast(data) {
+            connections.forEach(conn => {
+                if (conn.open) conn.send(data);
+            });
+        }
+
+        function updateOtherPlayer(data) {
+            if (data.id === gameState.player.id) return;
+            
+            if (!gameState.otherPlayers[data.id]) {
+                gameState.otherPlayers[data.id] = add([
+                    sprite(data.character || "mario"),
+                    pos(data.x, data.y),
+                    area(),
+                    "otherPlayer"
+                ]);
+                
+                // Add name tag
+                add([
+                    text(data.id.substring(0, 5), { size: 10 }),
+                    pos(data.x, data.y - 20),
+                    origin("center"),
+                    color(255, 255, 255),
+                    follow(gameState.otherPlayers[data.id], vec2(0, -20)),
+                    "nameTag"
+                ]);
+            } else {
+                gameState.otherPlayers[data.id].pos.x = data.x;
+                gameState.otherPlayers[data.id].pos.y = data.y;
+            }
+        }
+
+        // Helper functions
+        function lerp(a, b, t) {
+            return a + (b - a) * t;
+        }
+
+        function choose(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+    </script>
+</body>
+</html>
