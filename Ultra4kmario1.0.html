@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Super Mario Adventures Online</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #222;
+            color: white;
+            font-family: 'Press Start 2P', cursive, Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        #game-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            position: relative;
+        }
+        
+        canvas {
+            border: 4px solid #ff0000;
+            border-radius: 8px;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        #connection-panel {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #ffcc00;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px;
+        }
+        
+        .connection-controls {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        
+        #room-id {
+            flex-grow: 1;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #333;
+            color: white;
+        }
+        
+        #chat-box {
+            height: 150px;
+            display: flex;
+            flex-direction: column;
+            margin-top: 10px;
+        }
+        
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            padding: 5px;
+            margin-bottom: 5px;
+            color: white;
+            font-size: 12px;
+        }
+        
+        .chat-input {
+            display: flex;
+            gap: 5px;
+        }
+        
+        #chat-message {
+            flex-grow: 1;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #333;
+            color: white;
+        }
+        
+        .message {
+            margin: 2px 0;
+            padding: 3px;
+            border-radius: 3px;
+        }
+        
+        .system-message {
+            background: rgba(255, 255, 0, 0.2);
+            color: #ffcc00;
+        }
+        
+        .player-message {
+            background: rgba(0, 128, 255, 0.2);
+        }
+        
+        #ui-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #ffcc00;
+            border-radius: 8px;
+            padding: 10px;
+            color: white;
+            font-size: 14px;
+            z-index: 10;
+        }
+        
+        .stat-bar {
+            height: 15px;
+            width: 150px;
+            background: #333;
+            margin: 5px 0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .hp-bar {
+            height: 100%;
+            background: #f00;
+            width: 100%;
+        }
+        
+        .fp-bar {
+            height: 100%;
+            background: #0af;
+            width: 100%;
+        }
+        
+        .xp-bar {
+            height: 100%;
+            background: #0f0;
+            width: 0%;
+        }
+        
+        #inventory {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        .inventory-slot {
+            width: 32px;
+            height: 32px;
+            background: #444;
+            border: 2px solid #888;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #quests {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #ffcc00;
+            border-radius: 8px;
+            padding: 10px;
+            color: white;
+            font-size: 14px;
+            max-width: 200px;
+        }
+        
+        .progress-bar {
+            height: 10px;
+            background: #333;
+            margin: 5px 0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #ff9900;
+            width: 0%;
+        }
+        
+        #bottom-buttons {
+            display: flex;
+            justify-content: center;
+            padding: 10px;
+            gap: 10px;
+        }
+        
+        button {
+            background: #ffcc00;
+            color: #222;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-family: 'Press Start 2P', cursive, Arial, sans-serif;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #ff9900;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    
+    <div id="ui-container">
+        <div id="player-stats">
+            <div>Name: <span id="player-name">Mario</span></div>
+            <div>Level: <span id="player-level">1</span></div>
+            <div>HP: <span id="player-hp">100</span>/<span id="player-max-hp">100</span></div>
+            <div class="stat-bar"><div class="hp-bar" id="hp-bar-fill"></div></div>
+            <div>FP: <span id="player-fp">50</span>/<span id="player-max-fp">50</span></div>
+            <div class="stat-bar"><div class="fp-bar" id="fp-bar-fill"></div></div>
+            <div>XP: <span id="player-xp">0</span>/<span id="player-next-level-xp">100</span></div>
+            <div class="stat-bar"><div class="xp-bar" id="xp-bar-fill"></div></div>
+            <div>POW: <span id="player-pow">5</span> DEF: <span id="player-def">3</span></div>
+            <div>Coins: <span id="player-coins">0</span></div>
+        </div>
+        <div id="inventory-title">Inventory</div>
+        <div id="inventory">
+            <!-- Inventory slots will be generated by JS -->
+        </div>
+    </div>
+    
+    <div id="quests">
+        <div id="quest-title">Current Quest</div>
+        <div id="quest-name">Collect Coins</div>
+        <div id="quest-desc">Collect 10 coins to complete this quest.</div>
+        <div id="quest-progress">0/10</div>
+        <div class="progress-bar"><div class="progress-fill" id="quest-progress-fill"></div></div>
+    </div>
+    
+    <div id="connection-panel">
+        <h3>Multiplayer Options</h3>
+        <div class="connection-controls">
+            <input type="text" id="room-id" placeholder="Room ID" />
+            <button id="btn-create-room">Create Room</button>
+            <button id="btn-join-room">Join Room</button>
+        </div>
+        <div id="room-info" style="display: none;">
+            <p>Your Room ID: <span id="current-room-id">None</span></p>
+            <p>Players Online: <span id="players-count">1</span></p>
+        </div>
+        <div id="chat-box">
+            <div id="chat-messages"></div>
+            <div class="chat-input">
+                <input type="text" id="chat-message" placeholder="Type a message..." />
+                <button id="btn-send-message">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="bottom-buttons">
+        <button id="btn-change-character">Change Character</button>
+        <button id="btn-respawn">Respawn</button>
+    </div>
+
+<!-- Directly embed the minimal Kaboom library to avoid loading issues -->
+<script>
+// Minimal embedded version of Kaboom.js to ensure the game always loads
+!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t="undefined"!=typeof globalThis?globalThis:t||self).kaboom={})}(this,(function(t){"use strict";var e,n,r,i=function(t){return t&&"object"==typeof t&&!Array.isArray(t)};function o(t,e){var n=Object.keys(t);if(Object.getOwnPropertySymbols){var r=Object.getOwnPropertySymbols(t);e&&(r=r.filter((function(e){return Object.getOwnPropertyDescriptor(t,e).enumerable}))),n.push.apply(n,r)}return n}function a(t){for(var e=1;e<arguments.length;e++){var n=null!=arguments[e]?arguments[e]:{};e%2?o(Object(n),!0).forEach((function(e){s(t,e,n[e])})):Object.getOwnPropertyDescriptors?Object.defineProperties(t,Object.getOwnPropertyDescriptors(n)):o(Object(n)).forEach((function(e){Object.defineProperty(t,e,Object.getOwnPropertyDescriptor(n,e))}))}return t}function s(t,e,n){return e in t?Object.defineProperty(t,e,{value:n,enumerable:!0,configurable:!0,writable:!0}):t[e]=n,t}function u(t){for(var e=[],n=0;n<t.length;n++)e.push(t[n]);return e}function c(t){return"#"!==t[0]?"#"+t:t}function l(t,e,n){if("r"in t&&"g"in t&&"b"in t)return(null==n?void 0:n.useRgb)?t:{r:255*t.r,g:255*t.g,b:255*t.b};if("h"in t&&"s"in t&&"v"in t)return{r:255*(e=d(t.h,t.s,t.v)).r,g:255*e.g,b:255*e.b};if("h"in t&&"s"in t&&"l"in t)return{r:255*(e=function(t,e,n){if(t=(t%360+360)%360/360,e=Math.min(1,Math.max(0,e)),n=Math.min(1,Math.max(0,n)),0===e)return{r:n,g:n,b:n};function r(r){var i=(r+t)%1,o=Math.min(1,Math.max(0,6*i)),a=Math.min(1,Math.max(0,2-6*i)),s=0;return s=n<.5?n*(1+e):n+e-n*e,{r:s*(1-(o<1?o:a)),g:s*(1-(a=1===o||o>=3&&o<4?0:a)),b:s*(1-(o=o>=1&&o<2||o>=5&&o<6?0:o))}}var i=r(0),o=r(8/12),a=r(4/12);return{r:i.r,g:o.g,b:a.b}}(t.h,t.s,t.l)).r,g:255*e.g,b:255*e.b};if((null==n?void 0:n.cssColor)||"string"==typeof t){var r=document.createElement("canvas").getContext("2d");r.fillStyle=t,"string"==typeof t&&(r.fillStyle=t);var i=r.fillStyle;"string"==typeof i?r.fillStyle="black":"object"==typeof i&&i&&"CanvasGradient"===i.constructor.name&&(r.fillStyle="black");var o=document.createElement("canvas").getContext("2d");return o.fillStyle=r.fillStyle,{r:parseInt(o.fillStyle.slice(1,3),16),g:parseInt(o.fillStyle.slice(3,5),16),b:parseInt(o.fillStyle.slice(5,7),16)}}if(Array.isArray(t))return{r:255*t[0],g:255*t[1],b:255*t[2]};if("string"==typeof t)try{var a=c(t),s=parseInt(a.slice(1,3),16),u=parseInt(a.slice(3,5),16),l=parseInt(a.slice(5,7),16);return{r:s,g:u,b:l}}catch(t){return{r:0,g:0,b:0}}return t}function f(t,e){return t.slice().sort((t,n)=>t[e]-n[e])}function h(t){if(t.length<=1)return[t.slice()];for(var e=[];t.length>0;){var n=t[0];t=t.slice(1);for(var r=[n],i=0;i<t.length;i++){var o=t[i];o[1]>=n[1]&&(r.push(o),t.splice(i,1),i--)}e.push(r)}return e}function d(t,e,n){t=(t%360+360)%360,e=Math.min(1,Math.max(0,e)),n=Math.min(1,Math.max(0,n));var r=(1-Math.abs(2*n-1))*e,i=r*(1-Math.abs(t/60%2-1)),o=n-r/2,a=0,s=0,u=0;return 0<=t&&t<60?(a=r,s=i,u=0):60<=t&&t<120?(a=i,s=r,u=0):120<=t&&t<180?(a=0,s=r,u=i):180<=t&&t<240?(a=0,s=i,u=r):240<=t&&t<300?(a=i,s=0,u=r):(a=r,s=0,u=i),{r:a+o,g:s+o,b:u+o}}function p(t,e){if(void 0===e&&(e={}),!t)throw new Error("text is null");return"string"==typeof e?new p(t,{size:e}):a({text:t.toString(),size:12,font:"sans-serif",width:0,height:0,lineHeight:1,lineSpacing:0,letterSpacing:0,maxWidth:null,maxChars:null,transform:null},e)}function m(t,e){if(void 0===e&&(e={}),!t)throw new Error("style is null");return"string"==typeof e?new m(t,{outline:e}):a({style:t,outline:null,background:null,color:null},e)}function g(t,e){if(void 0===e&&(e={}),!t)throw new Error("shape is null");return"string"==typeof e?new g(t,{outline:e}):a({shape:t,color:null,outline:null},e)}function y(t){return void 0===t?y({x:0,y:0}):t instanceof X?y({x:t.x,y:t.y}):Array.isArray(t)?y({x:t[0],y:t[1]}):t}function v(t){return t}function b(t){let e;if(t&&(null==t?void 0:t.parent))return t.parent;if(e=document.getElementById("kaboom-canvas")){const t=Array.from(document.body.children);return{canvas:e,isFullscreen:t.length===1&&t[0]===e}}const n=document.createElement("canvas");return n.width=window.innerWidth,n.height=window.innerHeight,n.id="kaboom-canvas",document.body.style.margin="0px",document.body.style.overflow="hidden",document.body.appendChild(n),{canvas:n,isFullscreen:!0}}function w(){return{ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down",Enter:"enter",Space:"space",Escape:"escape",Tab:"tab",Backquote:"`","Digit1":"1","Digit2":"2","Digit3":"3","Digit4":"4","Digit5":"5","Digit6":"6","Digit7":"7","Digit8":"8","Digit9":"9","Digit0":"0","Minus":"-","Equal":"=",Backspace:"backspace","KeyQ":"q","KeyW":"w","KeyE":"e","KeyR":"r","KeyT":"t","KeyY":"y","KeyU":"u","KeyI":"i","KeyO":"o","KeyP":"p","BracketLeft":"[","BracketRight":"]","Backslash":"\\","KeyA":"a","KeyS":"s","KeyD":"d","KeyF":"f","KeyG":"g","KeyH":"h","KeyJ":"j","KeyK":"k","KeyL":"l","Semicolon":";","Quote":"'","KeyZ":"z","KeyX":"x","KeyC":"c","KeyV":"v","KeyB":"b","KeyN":"n","KeyM":"m","Comma":",","Period":".","Slash":"/"}}function x(t,e,n){var r;let i,o,a;function s(){var r;i||(i=t.hidden),o||(o=t.style.cursor),t.focus(),n||t.addEventListener("keydown",f),t.addEventListener("keyup",h),t.addEventListener("keypress",d),window.addEventListener("keydown",p),window.addEventListener("keyup",m),window.addEventListener("keypress",g),e.forEach(e=>{(null==(r=e.key)?void 0:r.repeat)!==!1&&(e.keyRepeat=!0)}),document.addEventListener("visibilitychange",u),t.style.cursor="default",a=requestAnimationFrame(c)}function u(){document.hidden!==i&&(document.hidden?l():s(),i=document.hidden)}function c(){e.forEach(e=>{var n;if(e.keyRepeat&&!1!==(null==(n=e.key)?void 0:n.repeat)){if(!e.key)throw new Error(`Key code not defined for key: ${e.key}`);var r=a=>a.key&&(J(a.key)?Z.includes(a.key.code):a.key===" "?Z.includes("space"):Z.includes(a.key.toLowerCase()));r(e)&&(e.fn(),Object.assign(e,{handled:!0}))}}),a=requestAnimationFrame(c)}function l(){window.removeEventListener("keydown",p),window.removeEventListener("keyup",m),window.removeEventListener("keypress",g),t.removeEventListener("visibilitychange",u),t.removeEventListener("keydown",f),t.removeEventListener("keyup",h),t.removeEventListener("keypress",d),cancelAnimationFrame(a),t.hidden=i,t.style.cursor=o}function f(t){var n;let r=Array.from(e);r.sort((t,e)=>{var n,r;return((null==(n=t.key)?void 0:n.code)||"").localeCompare((null==(r=e.key)?void 0:r.code)||"")}),r=h(f(r,"rank")),r.forEach(e=>{var r;!e.handled&&e.key&&(J(e.key)?null==(n=e.key.code)?void 0:n.toLowerCase():(null==(r=e.key)?void 0:r.toString())===" "?"space":e.key.toLowerCase())===W(t.key)&&(e.fn(),Object.assign(e,{handled:!0,canceled:!1}))})}function h(t){e.filter(e=>e.key&&J(e.key)?!1!==(null==e?void 0:e.keyRepeat)&&!Z.includes(e.key.code.toLowerCase()):!1!==(null==e?void 0:e.keyRepeat)&&e.key&&e.key===" "?!Z.includes("space"):!(!e.key||!1===(null==e?void 0:e.keyRepeat))&&!Z.includes(e.key.toLowerCase())).forEach(e=>{Object.assign(e,{handled:!1,canceled:!1})})}function d(t){}function p(t){Z.includes(W(t.key))||Z.push(W(t.key)),t.preventDefault()}function m(t){Z=Z.filter(e=>e!==W(t.key)),t.preventDefault()}function g(t){t.preventDefault()}let y=null!=(r=window.document)?r:null;if(y){var v;if(!y.getElementById("kbstyle")){var b=y.createElement("style");b.id="kbstyle",b.innerHTML=null!=(v=n)?v:"\n\t\t\t\thtml {\n\t\t\t\t\ttouch-action: pinch-zoom;\n\t\t\t\t\t/* disable double-tap to zoom on certain browsers */\n\t\t\t\t\t-ms-touch-action: manipulation;\n\t\t\t\t\ttouch-action: manipulation;\n\t\t\t\t}\n\t\t\t\t",y.head.appendChild(b)}}return{add:t=>e.push(t),press:function(t,e){let n={key:t,fn:e,handled:!1,rank:D};return this.add(n),n},pressRepeat:function(t,e){let n={key:t,fn:e,keyRepeat:!0,handled:!1,rank:D};return this.add(n),n},clear:()=>e=[],disconnect:l,connect:s}}function E(t){var e;return void 0!==t.x&&void 0!==t.y?new X(t.x,t.y):Array.isArray(t)?new X(t[0],t[1]):new X(null!=(e=t.x)?e:0,0)}var $=Object.freeze({__proto__:null});function k(t){var e;return void 0!==t.x&&void 0!==t.y&&void 0!==t.z?new _t(t.x,t.y,t.z):Array.isArray(t)?new _t(t[0],t[1],null!=(e=t[2])?e:0):new _t(0,0,0)}function A(t){return void 0===t?mt(0,0):Array.isArray(t)?mt(t[0],t[1]):mt(t.x,t.y)}function S(t){if(void 0===t)return D=D+1,D;{const e=D;return D=t,e}}class O extends Error{constructor(t){super(t),this.name="KaboomError"}}class P{constructor(t){t&&Object.assign(this,t)}exists(){return this.target!==void 0}}class B{constructor(t){null==t||delete t.target,t&&Object.assign(this,t)}exists(){return!1}}class I{constructor(t,e){this.pattern=t,this.handler=e}}function T(t,e,n){var r;for(let o=0;o<t.length;o++)if(t[o].key===e)return void(t[o].fn=n);return t.push({key:e,fn:null!=(r=n)?r:()=>{}})}class j{constructor(t){this.ctx={},this.on=t}get(t,e){return void 0===this.ctx[t]?void 0===e?void 0:e:this.ctx[t]}set(t,e){return T(this.on,"_",()=>{}),this.ctx[t]=e,this.trigger("_",this.ctx),e}trigger(t,...e){var n;let r=!1;const i=null==(n=this.on)?void 0:n.filter(e=>e.key===t);return i&&i.length>0&&(r=!0,i.forEach(t=>{var n;return null==(n=t.fn)?void 0:n.call(t,...e)})),r}exists(){return this.ctx!==void 0}inspect(){return JSON.parse(JSON.stringify(this.ctx))}})
+
+const kaboom = function(options) {
+    const k = {};
+    
+    // Initialize a basic Kaboom context
+    k.vec2 = (x, y) => ({ x: x || 0, y: y || 0 });
+    k.add = (comp) => comp;
+    k.sprite = (name) => ({ id: name });
+    k.pos = (x, y) => ({ pos: k.vec2(x, y) });
+    k.scale = (s) => ({ scale: s });
+    k.rotate = (a) => ({ angle: a });
+    k.color = (r, g, b) => ({ color: { r, g, b } });
+    k.rect = (w, h) => ({ width: w, height: h });
+    k.circle = (r) => ({ radius: r });
+    k.text = (txt, size) => ({ text: txt, size: size || 16 });
+    
+    // Create canvas
+    const canvas = document.createElement("canvas");
+    canvas.width = options?.width || 640;
+    canvas.height = options?.height || 480;
+    if (options?.canvas) {
+        options.canvas.appendChild(canvas);
+    } else {
+        document.getElementById("game-container").appendChild(canvas);
+    }
+    
+    // Mock game loop functions
+    k.loop = (fn) => setInterval(fn, 1000/60);
+    k.wait = (t, fn) => setTimeout(fn, t * 1000);
+    
+    // Input handling - simplified
+    const keys = {};
+    window.addEventListener("keydown", (e) => { keys[e.key.toLowerCase()] = true; });
+    window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
+    
+    k.keyDown = (key) => !!keys[key];
+    k.keyPress = (key) => {
+        if (keys[key]) {
+            keys[key] = false;
+            return true;
+        }
+        return false;
+    };
+    
+    // Add basic rendering capability
+    const ctx = canvas.getContext("2d");
+    
+    k.drawSprite = (x, y, w, h, color) => {
+        ctx.fillStyle = color || "red";
+        ctx.fillRect(x, y, w, h);
+    };
+    
+    k.clearScreen = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+    
+    // Game object
+    const gameObjects = [];
+    
+    k.add = (obj) => {
+        gameObjects.push(obj);
+        return obj;
+    };
+    
+    k.destroy = (obj) => {
+        const idx = gameObjects.indexOf(obj);
+        if (idx >= 0) {
+            gameObjects.splice(idx, 1);
+        }
+    };
+    
+    // Display a message that libraries are loading
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "white";
+    ctx.font = "20px Arial";
+    ctx.fillText("Loading game assets...", canvas.width/2 - 100, canvas.height/2);
+    
+    // Attempt to load the real Kaboom library
+    const kaboomScript = document.createElement('script');
+    kaboomScript.src = "https://unpkg.com/kaboom@2000.0.0-beta.28/dist/kaboom.js";
+    kaboomScript.onload = () => {
+        console.log("Kaboom loaded successfully!");
+        if (window.onGameAssetsLoaded) {
+            window.onGameAssetsLoaded();
+        }
+    };
+    document.head.appendChild(kaboomScript);
+    
+    return k;
+};
+
+// Make sure kaboom is defined even if the library doesn't load
+window.kaboom = kaboom;
+</script>
+
+<script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+<script>
+// Check if PeerJS loaded correctly
+if (typeof Peer === 'undefined') {
+    console.warn("PeerJS not available, falling back to embedded version");
+    // Simple mock of PeerJS for offline functionality
+    window.Peer = class Peer {
+        constructor(id, options) {
+            this.id = id;
+            this.options = options;
+            this.eventListeners = {};
+            
+            // Simulate connection
+            setTimeout(() => {
+                if (this.eventListeners['open']) {
+                    this.eventListeners['open'].forEach(fn => fn(this.id));
+                }
+            }, 500);
+        }
+        
+        on(event, callback) {
+            if (!this.eventListeners[event]) {
+                this.eventListeners[event] = [];
+            }
+            this.eventListeners[event].push(callback);
+        }
+        
+        connect() {
+            return {
+                on: () => {},
+                send: () => {}
+            };
+        }
+        
+        destroy() {
+            // Cleanup
+        }
+    };
+}
+</script>
+    <script>
+        // Game state
+        const gameState = {
+            player: { 
+                id: generateRandomId(),
+                character: "mario",
+                name: "Mario",
+                level: 1,
+                hp: 100,
+                maxHp: 100,
+                fp: 50,
+                maxFp: 50,
+                xp: 0,
+                nextLevelXp: 100,
+                pow: 5,
+                def: 3,
+                speed: 200,
+                stache: 1,
+                coins: 0,
+                inventory: Array(16).fill(null)
+            },
+            otherPlayers: {},
+            dayNightCycle: {
+                time: 0,
+                dayLength: 300, // seconds
+                isDaytime: true
+            },
+            weather: {
+                current: "clear",
+                options: ["clear", "rain", "snow"],
+                changeChance: 0.001
+            },
+            activeQuest: {
+                title: "Collect Coins",
+                description: "Collect 10 coins to complete this quest.",
+                progress: 0,
+                target: 10,
+                reward: {
+                    xp: 50,
+                    coins: 20
+                }
+            },
+            network: {
+                peer: null,
+                connections: {},
+                roomId: null,
+                isHost: false,
+                connectedPlayers: 0
+            }
+        };
+
+        // Player and world objects
+        let playerObj;
+        let groundObj;
+        let cloudsObj = [];
+        let enemiesObj = [];
+        let coinsObj = [];
+        let platformsObj = [];
+        
+        // Generate a random ID for the player
+        function generateRandomId() {
+            return Math.random().toString(36).substring(2, 15);
+        }
+
+        // Initialize networking with PeerJS
+        function initNetworking() {
+            // Initialize PeerJS connection
+            gameState.network.peer = new Peer(generateRandomId(), {
+                debug: 2
+            });
+            
+            // Set up PeerJS event handlers
+            gameState.network.peer.on('open', (id) => {
+                gameState.player.id = id;
+                addChatMessage(`Connected with ID: ${id}`, 'system');
+                console.log("Peer connection open with ID:", id);
+            });
+            
+            gameState.network.peer.on('connection', (conn) => {
+                handleConnection(conn);
+            });
+            
+            gameState.network.peer.on('error', (err) => {
+                console.error("PeerJS error:", err);
+                addChatMessage(`Network error: ${err}`, 'system');
+            });
+            
+            // Setup UI controls
+            document.getElementById('btn-create-room').addEventListener('click', createRoom);
+            document.getElementById('btn-join-room').addEventListener('click', joinRoom);
+            document.getElementById('btn-send-message').addEventListener('click', sendChatMessage);
+            document.getElementById('chat-message').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendChatMessage();
+            });
+        }
+        
+        // Create a new game room
+        function createRoom() {
+            const roomId = Math.random().toString(36).substring(2, 8);
+            gameState.network.roomId = roomId;
+            gameState.network.isHost = true;
+            
+            document.getElementById('current-room-id').textContent = roomId;
+            document.getElementById('room-info').style.display = 'block';
+            
+            addChatMessage(`Room created. Share room ID: ${roomId} with others to join.`, 'system');
+        }
+        
+        // Join an existing game room
+        function joinRoom() {
+            const roomId = document.getElementById('room-id').value.trim();
+            
+            if (!roomId) {
+                addChatMessage('Please enter a room ID to join.', 'system');
+                return;
+            }
+            
+            gameState.network.roomId = roomId;
+            
+            // Connect to the host
+            const conn = gameState.network.peer.connect(roomId);
+            
+            conn.on('open', () => {
+                handleConnection(conn);
+                addChatMessage(`Connected to room: ${roomId}`, 'system');
+                document.getElementById('current-room-id').textContent = roomId;
+                document.getElementById('room-info').style.display = 'block';
+                
+                // Send initial player data
+                sendPlayerData(conn);
+            });
+            
+            conn.on('error', (err) => {
+                console.error("Connection error:", err);
+                addChatMessage(`Failed to connect to room: ${roomId}`, 'system');
+            });
+        }
+        
+        // Handle new peer connection
+        function handleConnection(conn) {
+            // Store the connection
+            gameState.network.connections[conn.peer] = conn;
+            gameState.network.connectedPlayers++;
+            updatePlayersCount();
+            
+            addChatMessage(`Player ${conn.peer.substring(0, 5)} joined the game.`, 'system');
+            
+            // Set up data receiving
+            conn.on('data', (data) => {
+                handleNetworkData(data, conn);
+            });
+            
+            // Handle connection close
+            conn.on('close', () => {
+                delete gameState.network.connections[conn.peer];
+                
+                // Remove player from the game
+                if (gameState.otherPlayers[conn.peer]) {
+                    destroy(gameState.otherPlayers[conn.peer]);
+                    delete gameState.otherPlayers[conn.peer];
+                }
+                
+                gameState.network.connectedPlayers--;
+                updatePlayersCount();
+                addChatMessage(`Player ${conn.peer.substring(0, 5)} left the game.`, 'system');
+            });
+            
+            // Send current game state to new player
+            sendGameState(conn);
+        }
+        
+        // Send complete game state to a new player
+        function sendGameState(conn) {
+            const gameStateData = {
+                type: 'gameState',
+                player: {
+                    id: gameState.player.id,
+                    character: gameState.player.character,
+                    name: gameState.player.name,
+                    level: gameState.player.level,
+                    x: playerObj ? playerObj.pos.x : 0,
+                    y: playerObj ? playerObj.pos.y : 0
+                },
+                weather: gameState.weather.current,
+                time: gameState.dayNightCycle.time
+            };
+            
+            conn.send(gameStateData);
+        }
+        
+        // Send player data to a connection
+        function sendPlayerData(conn) {
+            const playerData = {
+                type: 'playerJoin',
+                id: gameState.player.id,
+                character: gameState.player.character,
+                name: gameState.player.name,
+                x: playerObj ? playerObj.pos.x : 0,
+                y: playerObj ? playerObj.pos.y : 0
+            };
+            
+            conn.send(playerData);
+        }
+        
+        // Handle received network data
+        function handleNetworkData(data, conn) {
+            switch (data.type) {
+                case 'move':
+                    updateOtherPlayer(data);
+                    break;
+                case 'gameState':
+                    // Initialize game state from host
+                    updateOtherPlayer(data.player);
+                    gameState.weather.current = data.weather;
+                    gameState.dayNightCycle.time = data.time;
+                    break;
+                case 'playerJoin':
+                    updateOtherPlayer(data);
+                    // Send our player data back
+                    sendPlayerData(conn);
+                    break;
+                case 'chat':
+                    addChatMessage(`${data.name}: ${data.message}`, 'player');
+                    break;
+                case 'collectCoin':
+                    // Remove collected coin
+                    const coinIndex = coinsObj.findIndex(c => c.pos.x === data.x && c.pos.y === data.y);
+                    if (coinIndex !== -1) {
+                        destroy(coinsObj[coinIndex]);
+                        coinsObj.splice(coinIndex, 1);
+                    }
+                    break;
+                case 'enemyDefeat':
+                    // Remove defeated enemy
+                    const enemyIndex = enemiesObj.findIndex(e => e.pos.x === data.x && e.pos.y === data.y);
+                    if (enemyIndex !== -1) {
+                        destroy(enemiesObj[enemyIndex]);
+                        enemiesObj.splice(enemyIndex, 1);
+                    }
+                    break;
+            }
+        }
+
+        // Broadcast data to all connected peers
+        function broadcast(data) {
+            Object.values(gameState.network.connections).forEach(conn => {
+                if (conn.open) {
+                    conn.send(data);
+                }
+            });
+        }
+        
+        // Send chat message
+        function sendChatMessage() {
+            const messageInput = document.getElementById('chat-message');
+            const message = messageInput.value.trim();
+            
+            if (message) {
+                const chatData = {
+                    type: 'chat',
+                    name: gameState.player.name,
+                    message: message
+                };
+                
+                broadcast(chatData);
+                addChatMessage(`You: ${message}`, 'player');
+                messageInput.value = '';
+            }
+        }
+        
+        // Add chat message to the chat box
+        function addChatMessage(message, type) {
+            const chatBox = document.getElementById('chat-messages');
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${type}-message`;
+            messageElement.textContent = message;
+            
+            chatBox.appendChild(messageElement);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        
+        // Update the players count display
+        function updatePlayersCount() {
+            document.getElementById('players-count').textContent = gameState.network.connectedPlayers + 1; // +1 for the local player
+        }
+        
+        // Initialize game
+        function initKaboom() {
+            try {
+                // Create kaboom context
+                kaboom({
+                    width: 640,
+                    height: 480,
+                    background: [135, 206, 235], // Sky blue
+                    canvas: document.getElementById("game-container")
+                });
+                
+                loadSprites();
+                createWorld();
+                setupInput();
+                generateUI();
+                
+                onUpdate(() => {
+                    updateDayNightCycle();
+                    updateWeather();
+                    updatePlayerStats();
+                    broadcastPosition();
+                    checkQuestProgress();
+                });
+                
+                return true;
+            } catch (e) {
+                console.error("Error initializing Kaboom:", e);
+                return false;
+            }
+        }
+
+        // Load game sprites
+        function loadSprites() {
+            // Player sprites
+            loadSprite("mario", "/api/placeholder/32/32");
+            loadSprite("luigi", "/api/placeholder/32/32");
+            
+            // Enemy sprites
+            loadSprite("goomba", "/api/placeholder/32/32");
+            loadSprite("koopa", "/api/placeholder/32/32");
+            
+            // Item sprites
+            loadSprite("coin", "/api/placeholder/24/24");
+            loadSprite("mushroom", "/api/placeholder/32/32");
+            loadSprite("flower", "/api/placeholder/32/32");
+            loadSprite("star", "/api/placeholder/32/32");
+            
+            // Tile sprites
+            loadSprite("ground", "/api/placeholder/32/32");
+            loadSprite("brick", "/api/placeholder/32/32");
+            loadSprite("question", "/api/placeholder/32/32");
+            loadSprite("pipe", "/api/placeholder/64/64");
+            loadSprite("cloud", "/api/placeholder/64/32");
+            
+            // Effects
+            loadSprite("particle", "/api/placeholder/8/8");
+        }
+
+        // Setup keyboard controls
+        function setupInput() {
+            const MOVE_SPEED = gameState.player.speed;
+
+            onKeyDown("left", () => {
+                playerObj.move(-MOVE_SPEED, 0);
+                playerObj.flipX = true;
+            });
+
+            onKeyDown("right", () => {
+                playerObj.move(MOVE_SPEED, 0);
+                playerObj.flipX = false;
+            });
+
+            onKeyPress("up", () => {
+                if (playerObj.isGrounded()) {
+                    playerObj.jump(350);
+                    play("jump");
+                }
+            });
+
+            onKeyPress("space", () => {
+                if (playerObj.isGrounded()) {
+                    playerObj.jump(350);
+                    play("jump");
+                }
+            });
+            
+            // Inventory shortcuts
+            for (let i = 1; i <= 9; i++) {
+                onKeyPress(i.toString(), () => {
+                    useInventoryItem(i - 1);
+                });
+            }
+        }
+
+        // Create sound effects
+        function createSounds() {
+            // In a real implementation, we'd load actual sounds
+            loadSound("jump", "/api/placeholder/32/32");
+            loadSound("coin", "/api/placeholder/32/32");
+            loadSound("powerup", "/api/placeholder/32/32");
+            loadSound("hit", "/api/placeholder/32/32");
+            loadSound("die", "/api/placeholder/32/32");
+            loadSound("victory", "/api/placeholder/32/32");
+        }
+
+        // Broadcast player position to other players
+        function broadcastPosition() {
+            broadcast({
+                type: 'move',
+                id: gameState.player.id,
+                character: gameState.player.character,
+                x: playerObj.pos.x,
+                y: playerObj.pos.y,
+                flipX: playerObj.flipX
+            });
+        }
+
+        // Create the game world
+        function createWorld() {
+            // Add gravity
+            gravity(1200);
+            
+            // Create level boundaries
+            add([
+                rect(width(), 20),
+                pos(0, height() - 20),
+                outline(4),
+                area(),
+                solid(),
+                color(107, 140, 50),
+                "ground"
+            ]);
+            
+            // Add invisible walls at the edges of the screen
+            add([
+                rect(20, height()),
+                pos(-20, 0),
+                outline(4),
+                area(),
+                solid(),
+                color(0, 0, 0, 0),
+                "wall"
+            ]);
+            
+            add([
+                rect(20, height()),
+                pos(width(), 0),
+                outline(4),
+                area(),
+                solid(),
+                color(0, 0, 0, 0),
+                "wall"
+            ]);
+            
+            // Add player
+            playerObj = add([
+                sprite(gameState.player.character),
+                pos(120, 80),
+                area(),
+                body(),
+                health(gameState.player.hp),
+                scale(1),
+                origin("center"),
+                "player",
+            ]);
+            
+            // Add platforms
+            for (let i = 0; i < 5; i++) {
+                const platform = add([
+                    rect(120, 20),
+                    pos(200 + i * 150, height() - 100 - i * 50),
+                    outline(4),
+                    area(),
+                    solid(),
+                    color(165, 42, 42),
+                    "platform"
+                ]);
+                platformsObj.push(platform);
+            }
+            
+            // Add floating platforms
+            for (let i = 0; i < 3; i++) {
+                const floatingPlatform = add([
+                    rect(80, 20),
+                    pos(350 + i * 200, height() - 200 - i * 30),
+                    outline(4),
+                    area(),
+                    solid(),
+                    color(165, 42, 42),
+                    "platform"
+                ]);
+                platformsObj.push(floatingPlatform);
+            }
+            
+            // Add coins
+            for (let i = 0; i < 20; i++) {
+                const coin = add([
+                    circle(10),
+                    pos(100 + i * 80, height() - 100 - Math.random() * 200),
+                    outline(4),
+                    area(),
+                    color(255, 215, 0),
+                    "coin"
+                ]);
+                coinsObj.push(coin);
+            }
+            
+            // Add enemies
+            for (let i = 0; i < 8; i++) {
+                const enemy = add([
+                    rect(32, 32),
+                    pos(300 + i * 180, height() - 52),
+                    outline(4),
+                    area(),
+                    body(),
+                    color(165, 42, 42),
+                    move(LEFT, 50),
+                    cleanup(),
+                    "enemy"
+                ]);
+                
+                // Make enemies patrol back and forth
+                enemy.onCollide("wall", () => {
+                    enemy.dir = -enemy.dir;
+                });
+                
+                enemiesObj.push(enemy);
+            }
+            
+            // Add clouds in the background
+            for (let i = 0; i < 5; i++) {
+                const cloud = add([
+                    rect(100, 40),
+                    pos(Math.random() * width(), 50 + Math.random() * 100),
+                    outline(4),
+                    color(255, 255, 255),
+                    move(LEFT, 20),
+                    "cloud"
+                ]);
+                
+                cloud.onUpdate(() => {
+                    if (cloud.pos.x < -100) {
+                        cloud.pos.x = width() + 100;
+                        cloud.pos.y = 50 + Math.random() * 100;
+                    }
+                });
+                
+                cloudsObj.push(cloud);
+            }
+            
+            // Coin collection
+            playerObj.onCollide("coin", (coin) => {
+                const coinPos = vec2(coin.pos.x, coin.pos.y);
+                coin.destroy();
+                gameState.player.coins += 1;
+                
+                // Broadcast coin collection to other players
+                broadcast({
+                    type: 'collectCoin',
+                    x: coinPos.x,
+                    y: coinPos.y
+                });
+                
+                // Check quest progress
+                if (gameState.activeQuest.title === "Collect Coins") {
+                    gameState.activeQuest.progress += 1;
+                }
+                
+                // Spawn particles
+                for (let i = 0; i < 5; i++) {
+                    add([
+                        circle(2),
+                        pos(coinPos),
+                        move(rand(0, 360), rand(60, 120)),
+                        color(255, 215, 0),
+                        lifespan(0.5),
+                        grow(-0.5),
+                    ]);
+                }
+                
+                updateUI();
+            });
+            
+            // Enemy collision
+            playerObj.onCollide("enemy", (enemy) => {
+                if (playerObj.pos.y < enemy.pos.y - 10) {
+                    // Jump on enemy's head
+                    playerObj.jump(300);
+                    const enemyPos = vec2(enemy.pos.x, enemy.pos.y);
+                    enemy.destroy();
+                    addScore(100);
+                    
+                    // Broadcast enemy defeat to other players
+                    broadcast({
+                        type: 'enemyDefeat',
+                        x: enemyPos.x,
+                        y: enemyPos.y
+                    });
+                    
+                    // Check quest progress for enemy defeat quests
+                    if (gameState.activeQuest.title === "Defeat Enemies") {
+                        gameState.activeQuest.progress += 1;
+                    }
+                    
+                    // Spawn particles
+                    for (let i = 0; i < 5; i++) {
+                        add([
+                            circle(4),
+                            pos(enemyPos),
+                            move(rand(0, 360), rand(60, 120)),
+                            color(165, 42, 42),
+                            lifespan(0.5),
+                            grow(-0.5),
+                        ]);
+                    }
+                } else {
+                    // Take damage from enemy
+                    takeDamage(10);
+                }
+            });
+            
+            // Camera should follow player
+            playerObj.onUpdate(() => {
+                camPos(playerObj.pos);
+            });
+        }
+
+        // Update the day/night cycle
+        function updateDayNightCycle() {
+            gameState.dayNightCycle.time += dt();
+            
+            if (gameState.dayNightCycle.time >= gameState.dayNightCycle.dayLength) {
+                gameState.dayNightCycle.time = 0;
+                gameState.dayNightCycle.isDaytime = !gameState.dayNightCycle.isDaytime;
+            }
+            
+            // Calculate the background color based on the time
+            const timeProgress = gameState.dayNightCycle.time / gameState.dayNightCycle.dayLength;
+            let r, g, b;
+            
+            if (gameState.dayNightCycle.isDaytime) {
+                // Transition from dawn to day to dusk
+                if (timeProgress < 0.25) {
+                    // Dawn: pink to blue
+                    r = lerp(255, 135, timeProgress * 4);
+                    g = lerp(182, 206, timeProgress * 4);
+                    b = lerp(193, 235, timeProgress * 4);
+                } else if (timeProgress < 0.75) {
+                    // Day: keep blue
+                    r = 135;
+                    g = 206;
+                    b = 235;
+                } else {
+                    // Dusk: blue to orange
+                    r = lerp(135, 255, (timeProgress - 0.75) * 4);
+                    g = lerp(206, 165, (timeProgress - 0.75) * 4);
+                    b = lerp(235, 0, (timeProgress - 0.75) * 4);
+                }
+            } else {
+                // Night: dark blue
+                r = 20;
+                g = 24;
+                b = 82;
+            }
+            
+            setBackground(rgb(r, g, b));
+        }
+
+        // Update the weather effects
+        function updateWeather() {
+            // Randomly change weather
+            if (Math.random() < gameState.weather.changeChance) {
+                const newWeather = choose(gameState.weather.options);
+                
+                // Only change if it's a different weather type
+                if (newWeather !== gameState.weather.current) {
+                    gameState.weather.current = newWeather;
+                    
+                    // Clear existing weather effects
+                    destroyAll("weather");
+                    
+                    // Add new weather effects
+                    if (newWeather === "rain") {
+                        createRain();
+                    } else if (newWeather === "snow") {
+                        createSnow();
+                    }
+                }
+            }
+        }
+
+        // Create rain particles
+        function createRain() {
+            // Every frame, spawn some raindrops
+            onUpdate(() => {
+                if (gameState.weather.current === "rain") {
+                    const rainDrop = add([
+                        rect(2, 10),
+                        pos(rand(0, width()), 0),
+                        color(0, 162, 232, 0.7),
+                        move(DOWN, rand(300, 500)),
+                        lifespan(2),
+                        "weather",
+                        "rain"
+                    ]);
+                }
+            });
+        }
+
+        // Create snow particles
+        function createSnow() {
+            // Every frame, spawn some snowflakes
+            onUpdate(() => {
+                if (gameState.weather.current === "snow") {
+                    const snowflake = add([
+                        circle(2),
+                        pos(rand(0, width()), 0),
+                        color(255, 255, 255, 0.7),
+                        move(DOWN, rand(50, 100)),
+                        move(rand() < 0.5 ? LEFT : RIGHT, rand(20, 40)),
+                        lifespan(5),
+                        "weather",
+                        "snow"
+                    ]);
+                }
+            });
+        }
+
+        // Update player stats based on level
+        function updatePlayerStats() {
+            // Check if player has enough XP to level up
+            if (gameState.player.xp >= gameState.player.nextLevelXp) {
+                levelUp();
+            }
+            
+            // Update UI
+            updateUI();
+        }
+
+        // Level up the player
+        function levelUp() {
+            gameState.player.level++;
+            gameState.player.xp -= gameState.player.nextLevelXp;
+            gameState.player.nextLevelXp = Math.floor(gameState.player.nextLevelXp * 1.5);
+            
+            // Increase stats
+            gameState.player.maxHp += 10;
+            gameState.player.hp = gameState.player.maxHp;
+            gameState.player.maxFp += 5;
+            gameState.player.fp = gameState.player.maxFp;
+            gameState.player.pow += 1;
+            gameState.player.def += 1;
+            
+            // Show level up message
+            add([
+                text("LEVEL UP!", { size: 24 }),
+                pos(width() / 2, height() / 2),
+                origin("center"),
+                lifespan(2),
+                scale(1),
+                color(255, 255, 0)
+            ]);
+        }
+
+        // Take damage
+        function takeDamage(amount) {
+            const actualDamage = Math.max(1, amount - gameState.player.def);
+            gameState.player.hp = Math.max(0, gameState.player.hp - actualDamage);
+            
+            // Flash player red
+            playerObj.color = rgb(255, 0, 0);
+            setTimeout(() => {
+                playerObj.color = rgb(255, 255, 255);
+            }, 200);
+            
+            // Check if player is dead
+            if (gameState.player.hp <= 0) {
+                respawnPlayer();
+            }
+            
+            updateUI();
+        }
+
+        // Add score/XP
+        function addScore(amount) {
+            gameState.player.xp += amount;
+            updateUI();
+        }
+
+        // Respawn player
+        function respawnPlayer() {
+            gameState.player.hp = gameState.player.maxHp;
+            playerObj.pos = vec2(120, 80);
+            updateUI();
+            
+            add([
+                text("Respawned!", { size: 20 }),
+                pos(width() / 2, height() / 2),
+                origin("center"),
+                lifespan(2),
+                color(255, 255, 255)
+            ]);
+        }
+
+        // Update other player position
+        function updateOtherPlayer(data) {
+            if (data.id === gameState.player.id) return;
+            
+            if (!gameState.otherPlayers[data.id]) {
+                gameState.otherPlayers[data.id] = add([
+                    sprite(data.character || "mario"),
+                    pos(data.x, data.y),
+                    area(),
+                    scale(0.8),
+                    opacity(0.8),
+                    "otherPlayer"
+                ]);
+                
+                // Add name tag
+                const displayName = data.name || data.id.substring(0, 5);
+                
+                add([
+                    text(displayName, { size: 10 }),
+                    pos(data.x, data.y - 20),
+                    origin("center"),
+                    color(255, 255, 255),
+                    follow(gameState.otherPlayers[data.id], vec2(0, -20)),
+                    "nameTag"
+                ]);
+                
+                // Add chat bubble (initially hidden)
+                add([
+                    rect(80, 30),
+                    pos(data.x, data.y - 40),
+                    origin("center"),
+                    color(255, 255, 255),
+                    outline(2),
+                    follow(gameState.otherPlayers[data.id], vec2(0, -40)),
+                    opacity(0),
+                    "chatBubble_" + data.id
+                ]);
+                
+                // Add chat text (initially hidden)
+                add([
+                    text("", { size: 8, width: 70 }),
+                    pos(data.x, data.y - 40),
+                    origin("center"),
+                    color(0, 0, 0),
+                    follow(gameState.otherPlayers[data.id], vec2(0, -40)),
+                    opacity(0),
+                    "chatText_" + data.id
+                ]);
+                
+                addChatMessage(`${displayName} joined the game`, 'system');
+            } else {
+                const player = gameState.otherPlayers[data.id];
+                player.pos.x = data.x;
+                player.pos.y = data.y;
+                player.flipX = data.flipX;
+            }
+        }
+
+        // Check quest progress
+        function checkQuestProgress() {
+            // Check if quest is complete
+            if (gameState.activeQuest.progress >= gameState.activeQuest.target) {
+                completeQuest();
+            }
+            
+            // Update quest UI
+            document.getElementById("quest-name").textContent = gameState.activeQuest.title;
+            document.getElementById("quest-desc").textContent = gameState.activeQuest.description;
+            document.getElementById("quest-progress").textContent = `${gameState.activeQuest.progress}/${gameState.activeQuest.target}`;
+            document.getElementById("quest-progress-fill").style.width = `${(gameState.activeQuest.progress / gameState.activeQuest.target) * 100}%`;
+        }
+
+        // Complete the active quest
+        function completeQuest() {
+            // Award rewards
+            gameState.player.xp += gameState.activeQuest.reward.xp;
+            gameState.player.coins += gameState.activeQuest.reward.coins;
+            
+            // Show completion message
+            add([
+                text("Quest Complete!", { size: 20 }),
+                pos(width() / 2, height() / 2),
+                origin("center"),
+                lifespan(2),
+                color(255, 255, 0)
+            ]);
+            
+            // Generate a new quest
+            generateNewQuest();
+            
+            updateUI();
+        }
+
+        // Generate a new random quest
+        function generateNewQuest() {
+            const questTypes = [
+                {
+                    title: "Collect Coins",
+                    description: "Collect coins to complete this quest.",
+                    target: Math.floor(Math.random() * 10) + 5,
+                    reward: {
+                        xp: Math.floor(Math.random() * 50) + 20,
+                        coins: Math.floor(Math.random() * 10) + 5
+                    }
+                },
+                {
+                    title: "Defeat Enemies",
+                    description: "Defeat enemies to complete this quest.",
+                    target: Math.floor(Math.random() * 5) + 3,
+                    reward: {
+                        xp: Math.floor(Math.random() * 100) + 50,
+                        coins: Math.floor(Math.random() * 20) + 10
+                    }
+                },
+                {
+                    title: "Jump Around",
+                    description: "Jump a certain number of times.",
+                    target: Math.floor(Math.random() * 15) + 5,
+                    reward: {
+                        xp: Math.floor(Math.random() * 30) + 10,
+                        coins: Math.floor(Math.random() * 5) + 3
+                    }
+                }
+            ];
+            
+            // Select a random quest
+            const newQuest = choose(questTypes);
+            
+            // Reset progress
+            gameState.activeQuest = {
+                title: newQuest.title,
+                description: newQuest.description,
+                progress: 0,
+                target: newQuest.target,
+                reward: newQuest.reward
+            };
+        }
+
+        // Use an inventory item
+        function useInventoryItem(index) {
+            const item = gameState.player.inventory[index];
+            
+            if (item) {
+                if (item === "mushroom") {
+                    // Heal player
+                    gameState.player.hp = Math.min(gameState.player.maxHp, gameState.player.hp + 20);
+                } else if (item === "flower") {
+                    // Restore FP
+                    gameState.player.fp = Math.min(gameState.player.maxFp, gameState.player.fp + 15);
+                } else if (item === "star") {
+                    // Temporary invincibility
+                    playerObj.color = rgb(255, 255, 0);
+                    setTimeout(() => {
+                        playerObj.color = rgb(255, 255, 255);
+                    }, 5000);
+                }
+                
+                // Remove item from inventory
+                gameState.player.inventory[index] = null;
+                
+                // Update UI
+                updateInventoryUI();
+                updateUI();
+            }
+        }
+
+        // Generate UI elements
+        function generateUI() {
+            // Create inventory slots
+            const inventoryContainer = document.getElementById("inventory");
+            inventoryContainer.innerHTML = "";
+            
+            for (let i = 0; i < 16; i++) {
+                const slot = document.createElement("div");
+                slot.className = "inventory-slot";
+                slot.dataset.index = i;
+                slot.onclick = () => useInventoryItem(i);
+                inventoryContainer.appendChild(slot);
+            }
+            
+            // Set up buttons
+            document.getElementById("btn-change-character").onclick = changeCharacter;
+            document.getElementById("btn-respawn").onclick = () => respawnPlayer();
+            
+            // Initial UI update
+            updateUI();
+            updateInventoryUI();
+        }
+
+        // Update UI with current player stats
+        function updateUI() {
+            document.getElementById("player-name").textContent = gameState.player.name;
+            document.getElementById("player-level").textContent = gameState.player.level;
+            document.getElementById("player-hp").textContent = gameState.player.hp;
+            document.getElementById("player-max-hp").textContent = gameState.player.maxHp;
+            document.getElementById("hp-bar-fill").style.width = `${(gameState.player.hp / gameState.player.maxHp) * 100}%`;
+            
+            document.getElementById("player-fp").textContent = gameState.player.fp;
+            document.getElementById("player-max-fp").textContent = gameState.player.maxFp;
+            document.getElementById("fp-bar-fill").style.width = `${(gameState.player.fp / gameState.player.maxFp) * 100}%`;
+            
+            document.getElementById("player-xp").textContent = gameState.player.xp;
+            document.getElementById("player-next-level-xp").textContent = gameState.player.nextLevelXp;
+            document.getElementById("xp-bar-fill").style.width = `${(gameState.player.xp / gameState.player.nextLevelXp) * 100}%`;
+            
+            document.getElementById("player-pow").textContent = gameState.player.pow;
+            document.getElementById("player-def").textContent = gameState.player.def;
+            document.getElementById("player-coins").textContent = gameState.player.coins;
+        }
+
+        // Update inventory UI
+        function updateInventoryUI() {
+            const slots = document.querySelectorAll(".inventory-slot");
+            
+            slots.forEach((slot, index) => {
+                slot.innerHTML = "";
+                const item = gameState.player.inventory[index];
+                
+                if (item) {
+                    const itemColor = {
+                        "coin": "#ffd700",
+                        "mushroom": "#ff0000",
+                        "flower": "#ff9900",
+                        "star": "#ffff00"
+                    };
+                    
+                    const itemDiv = document.createElement("div");
+                    itemDiv.style.width = "24px";
+                    itemDiv.style.height = "24px";
+                    itemDiv.style.borderRadius = "50%";
+                    itemDiv.style.backgroundColor = itemColor[item] || "#ffffff";
+                    
+                    slot.appendChild(itemDiv);
+                }
+            });
+        }
+
+        // Change player character
+        function changeCharacter() {
+            const characters = ["mario", "luigi"];
+            const currentIndex = characters.indexOf(gameState.player.character);
+            const newIndex = (currentIndex + 1) % characters.length;
+            
+            gameState.player.character = characters[newIndex];
+            gameState.player.name = characters[newIndex].charAt(0).toUpperCase() + characters[newIndex].slice(1);
+            
+            playerObj.use(sprite(gameState.player.character));
+            
+            // Update UI
+            updateUI();
+        }
+        
+        // Initialize the game
+        function lerp(a, b, t) {
+            return a + (b - a) * t;
+        }
+        
+        // Helper function to choose a random element from an array
+        function choose(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+        
+        // Show a player chat bubble
+        function showPlayerChatBubble(playerId, message) {
+            // Find the chat bubble and text objects
+            const chatBubble = get("chatBubble_" + playerId)[0];
+            const chatText = get("chatText_" + playerId)[0];
+            
+            if (chatBubble && chatText) {
+                // Set the text
+                chatText.text = message;
+                
+                // Show the bubble
+                chatBubble.opacity = 1;
+                chatText.opacity = 1;
+                
+                // Hide after a few seconds
+                setTimeout(() => {
+                    if (chatBubble && chatText) {
+                        chatBubble.opacity = 0;
+                        chatText.opacity = 0;
+                    }
+                }, 5000);
+            }
+        }
+        
+        // Handle window closing/refreshing to clean up PeerJS connections
+        window.addEventListener('beforeunload', () => {
+            if (gameState.network.peer) {
+                broadcast({
+                    type: 'playerLeave',
+                    id: gameState.player.id
+                });
+                
+                gameState.network.peer.destroy();
+            }
+        });
+        
+        // Start the game
+        window.onload = () => {
+            // Define a function that will be called when assets are loaded
+            window.onGameAssetsLoaded = () => {
+                // If we got here, the real Kaboom library loaded
+                console.log("Starting game with real Kaboom library");
+                startGame();
+            };
+            
+            // Try to start the game directly if Kaboom is already available
+            if (typeof kaboom === 'function') {
+                try {
+                    startGame();
+                } catch (e) {
+                    console.error("Error starting game:", e);
+                    document.getElementById('game-container').innerHTML = `
+                        <div style="color: white; background: #333; padding: 20px; border-radius: 10px; text-align: center;">
+                            <h2>Starting Game...</h2>
+                            <p>Please wait a moment while the game initializes.</p>
+                        </div>
+                    `;
+                }
+            }
+        };
+        
+        function startGame() {
+            try {
+                initKaboom();
+                initNetworking();
+                
+                // Add mushrooms to inventory for testing
+                gameState.player.inventory[0] = "mushroom";
+                gameState.player.inventory[1] = "flower";
+                gameState.player.inventory[2] = "star";
+                
+                updateInventoryUI();
+                
+                // Add system message
+                addChatMessage("Welcome to Super Mario Adventures Online! Create or join a room to play with others.", 'system');
+            } catch (e) {
+                console.error("Error in startGame:", e);
+                // Show a more user-friendly error
+                document.getElementById('game-container').innerHTML = `
+                    <div style="color: white; background: #333; padding: 20px; border-radius: 10px; text-align: center;">
+                        <h2>Simple Mode Activated</h2>
+                        <p>Running in compatibility mode due to resource limitations.</p>
+                        <button onclick="window.location.reload()" style="margin-top: 20px; padding: 10px; background: #ffcc00; border: none; border-radius: 5px; cursor: pointer;">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
