@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mario & Luigi: RuneScape Adventures</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #222;
+            color: white;
+            font-family: 'Press Start 2P', cursive, Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #game-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        canvas {
+            border: 4px solid #ff0000;
+            border-radius: 8px;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #gui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+        #gui > * {
+            pointer-events: auto;
+        }
+        #party-panel, #skills-panel, #inventory-panel, #chat-panel, #connect-panel {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #ffcc00;
+            border-radius: 8px;
+            padding: 10px;
+            color: white;
+            font-size: 12px;
+        }
+        #party-panel { width: 200px; }
+        #skills-panel { width: 150px; }
+        #inventory-panel { width: 200px; }
+        #chat-panel { width: 250px; height: 200px; display: flex; flex-direction: column; }
+        #connect-panel { width: 200px; }
+        .stat-bar {
+            height: 8px;
+            width: 100px;
+            background: #333;
+            margin: 2px 0;
+            border-radius: 3px;
+        }
+        .hp-bar { background: #ff0000; height: 100%; }
+        .fp-bar { background: #00ccff; height: 100%; }
+        .skill-grid, .inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .skill-slot, .inventory-slot {
+            width: 32px;
+            height: 32px;
+            background: #444;
+            border: 2px solid #888;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            margin-bottom: 5px;
+        }
+        .chat-input {
+            display: flex;
+            gap: 5px;
+        }
+        #chat-message {
+            flex-grow: 1;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #333;
+            color: white;
+        }
+        button {
+            background: #ffcc00;
+            color: #222;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-family: 'Press Start 2P', cursive;
+            cursor: pointer;
+        }
+        button:hover { background: #ff9900; }
+        #battle-menu {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #ffcc00;
+            border-radius: 8px;
+            padding: 10px;
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            width: 150px;
+        }
+        .battle-option {
+            background: #ffcc00;
+            padding: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .battle-option:hover { background: #ff9900; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="gui">
+            <div id="party-panel">
+                <div>Mario HP: <span id="mario-hp">100</span>/<span id="mario-max-hp">100</span></div>
+                <div class="stat-bar"><div class="hp-bar" id="mario-hp-bar"></div></div>
+                <div>FP: <span id="mario-fp">50</span>/<span id="mario-max-fp">50</span></div>
+                <div class="stat-bar"><div class="fp-bar" id="mario-fp-bar"></div></div>
+                <div>Luigi HP: <span id="luigi-hp">80</span>/<span id="luigi-max-hp">80</span></div>
+                <div class="stat-bar"><div class="hp-bar" id="luigi-hp-bar"></div></div>
+                <div>FP: <span id="luigi-fp">60</span>/<span id="luigi-max-fp">60</span></div>
+                <div class="stat-bar"><div class="fp-bar" id="luigi-fp-bar"></div></div>
+            </div>
+            <div id="skills-panel">
+                <div>Skills</div>
+                <div class="skill-grid" id="skill-grid"></div>
+            </div>
+            <div id="inventory-panel">
+                <div>Inventory</div>
+                <div class="inventory-grid" id="inventory-grid"></div>
+            </div>
+            <div id="chat-panel">
+                <div id="chat-messages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chat-message" placeholder="Meow here..." />
+                    <button id="send-chat">Send</button>
+                </div>
+            </div>
+            <div id="connect-panel">
+                <div>Your ID: <span id="your-id">...</span></div>
+                <div>Status: <span id="connect-status">Connecting...</span></div>
+            </div>
+        </div>
+        <div id="battle-menu">
+            <div class="battle-option" data-action="attack">Attack</div>
+            <div class="battle-option" data-action="special">Special</div>
+            <div class="battle-option" data-action="item">Item</div>
+            <div class="battle-option" data-action="flee">Flee</div>
+        </div>
+    </div>
+
+    <!-- Load Kaboom.js -->
+    <script src="https://unpkg.com/kaboom@2000.0.0-beta.28/dist/kaboom.js"></script>
+    <!-- Load PeerJS -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+
+    <script>
+        // Initialize Kaboom
+        const k = kaboom({
+            width: 640,
+            height: 480,
+            background: [135, 206, 235],
+            canvas: document.querySelector("canvas") || document.createElement("canvas")
+        });
+        if (!document.querySelector("canvas")) document.getElementById("game-container").appendChild(k.canvas);
+
+        // Game state
+        const gameState = {
+            party: {
+                mario: { id: null, x: 120, y: 428, hp: 100, maxHp: 100, fp: 50, maxFp: 50, pow: 5, def: 3, coins: 0, level: 1, xp: 0 },
+                luigi: { id: null, x: 160, y: 428, hp: 80, maxHp: 80, fp: 60, maxFp: 60, pow: 4, def: 2, coins: 0, level: 1, xp: 0 }
+            },
+            skills: { hammering: 1, jumping: 1, cooking: 1 },
+            inventory: ["mushroom", null, null, null, null, null, null, null],
+            otherPlayers: {},
+            coins: [],
+            enemies: [],
+            battle: { active: false, enemy: null, turn: "player" },
+            peer: null,
+            connections: {},
+            worldObjects: {},
+            baseHubId: "mario-luigi-hub" // Fixed "base server" ID
+        };
+
+        // Load sprites
+        k.loadSprite("mario", "https://kaboomjs.com/sprites/mario.png");
+        k.loadSprite("luigi", "https://kaboomjs.com/sprites/luigi.png");
+        k.loadSprite("goomba", "https://kaboomjs.com/sprites/goomba.png");
+        k.loadSprite("coin", "https://kaboomjs.com/sprites/coin.png");
+
+        // Game objects
+        let marioObj, luigiObj, enemiesObj = [], coinsObj = [];
+
+        // Initialize world
+        function initWorld() {
+            k.add([k.rect(k.width(), 20), k.pos(0, k.height() - 20), k.area(), k.solid(), k.color(107, 140, 50)]);
+            marioObj = k.add([k.sprite("mario"), k.pos(gameState.party.mario.x, gameState.party.mario.y), k.area()]);
+            luigiObj = k.add([k.sprite("luigi"), k.pos(gameState.party.luigi.x, gameState.party.luigi.y), k.area()]);
+            syncWorldObjects();
+        }
+
+        // Sync world objects
+        function syncWorldObjects() {
+            if (Object.keys(gameState.worldObjects).length === 0) {
+                for (let i = 0; i < 20; i++) {
+                    gameState.worldObjects[`coin_${i}`] = { type: "coin", x: 100 + i * 80, y: 380 - Math.random() * 200, active: true };
+                }
+                for (let i = 0; i < 10; i++) {
+                    gameState.worldObjects[`enemy_${i}`] = { type: "enemy", x: 300 + i * 100, y: 428, hp: 20, pow: 3, def: 1, active: true };
+                }
+            }
+            Object.entries(gameState.worldObjects).forEach(([id, obj]) => {
+                if (obj.active && !k.get(id).length) {
+                    if (obj.type === "coin") {
+                        const coin = k.add([k.sprite("coin"), k.pos(obj.x, obj.y), k.area(), k.tag(id)]);
+                        coinsObj.push(coin);
+                    } else if (obj.type === "enemy") {
+                        const enemy = k.add([k.sprite("goomba"), k.pos(obj.x, obj.y), k.area(), k.tag(id), { hp: obj.hp }]);
+                        enemiesObj.push(enemy);
+                    }
+                }
+            });
+        }
+
+        // P2P Networking
+        function initNetworking() {
+            gameState.peer = new Peer();
+            gameState.peer.on("open", (id) => {
+                gameState.party.mario.id = id;
+                gameState.party.luigi.id = id + "_luigi";
+                document.getElementById("your-id").textContent = id.substring(0, 8);
+                addChatMessage(`Meow! Your ID: ${id.substring(0, 8)}`);
+                // Auto-connect to base hub
+                if (id !== gameState.baseHubId) {
+                    const conn = gameState.peer.connect(gameState.baseHubId);
+                    gameState.connections[gameState.baseHubId] = conn;
+                    conn.on("open", () => {
+                        conn.send({ type: "join", party: gameState.party, world: gameState.worldObjects });
+                        document.getElementById("connect-status").textContent = "Connected to Hub";
+                        addChatMessage("Purr! Connected to Mario & Luigi Hub!");
+                    });
+                    conn.on("data", handleNetworkData);
+                    conn.on("close", () => {
+                        delete gameState.connections[gameState.baseHubId];
+                        document.getElementById("connect-status").textContent = "Disconnected";
+                        addChatMessage("Meow! Lost connection to hub.");
+                    });
+                    conn.on("error", () => {
+                        document.getElementById("connect-status").textContent = "Hub Offline";
+                        addChatMessage("Meow! Hub is offline—play solo or start a new hub!");
+                    });
+                } else {
+                    document.getElementById("connect-status").textContent = "You are the Hub!";
+                    addChatMessage("Meow! You’re the Mario & Luigi Hub—others will join you!");
+                }
+            });
+            gameState.peer.on("connection", (conn) => {
+                gameState.connections[conn.peer] = conn;
+                conn.on("open", () => {
+                    conn.send({ type: "join", party: gameState.party, world: gameState.worldObjects });
+                });
+                conn.on("data", handleNetworkData);
+                conn.on("close", () => {
+                    delete gameState.otherPlayers[conn.peer];
+                    delete gameState.connections[conn.peer];
+                    addChatMessage(`Player ${conn.peer.substring(0, 8)} left, meow!`);
+                    updateUI();
+                });
+            });
+        }
+
+        function broadcast(data) {
+            Object.values(gameState.connections).forEach(conn => conn.open && conn.send(data));
+        }
+
+        function handleNetworkData(data) {
+            switch (data.type) {
+                case "join":
+                    gameState.otherPlayers[data.party.mario.id] = {
+                        mario: k.add([k.sprite("mario"), k.pos(data.party.mario.x, data.party.mario.y), k.scale(0.8), k.opacity(0.8)]),
+                        luigi: k.add([k.sprite("luigi"), k.pos(data.party.luigi.x, data.party.luigi.y), k.scale(0.8), k.opacity(0.8)])
+                    };
+                    addChatMessage(`Player ${data.party.mario.id.substring(0, 8)} joined, meow!`);
+                    Object.assign(gameState.worldObjects, data.world);
+                    syncWorldObjects();
+                    broadcast({ type: "join", party: gameState.party, world: gameState.worldObjects });
+                    break;
+                case "move":
+                    if (gameState.otherPlayers[data.party.mario.id]) {
+                        gameState.otherPlayers[data.party.mario.id].mario.pos.x = data.party.mario.x;
+                        gameState.otherPlayers[data.party.mario.id].mario.pos.y = data.party.mario.y;
+                        gameState.otherPlayers[data.party.mario.id].luigi.pos.x = data.party.luigi.x;
+                        gameState.otherPlayers[data.party.mario.id].luigi.pos.y = data.party.luigi.y;
+                    }
+                    break;
+                case "chat":
+                    addChatMessage(`${data.id.substring(0, 8)}: ${data.message}`);
+                    break;
+                case "collect":
+                    gameState.worldObjects[data.id].active = false;
+                    k.get(data.id).forEach(obj => obj.destroy());
+                    setTimeout(() => {
+                        gameState.worldObjects[data.id].active = true;
+                        syncWorldObjects();
+                        broadcast({ type: "collect", id: data.id });
+                    }, 10000);
+                    break;
+                case "defeat":
+                    gameState.worldObjects[data.id].active = false;
+                    k.get(data.id).forEach(obj => obj.destroy());
+                    setTimeout(() => {
+                        gameState.worldObjects[data.id].active = true;
+                        gameState.worldObjects[data.id].hp = 20;
+                        syncWorldObjects();
+                        broadcast({ type: "defeat", id: data.id });
+                    }, 5000);
+                    break;
+            }
+        }
+
+        // Input handling
+        k.onKeyDown("left", () => moveParty(-200, 0));
+        k.onKeyDown("right", () => moveParty(200, 0));
+        k.onKeyPress("space", () => {
+            if (!gameState.battle.active) checkForBattle();
+        });
+
+        function moveParty(dx, dy) {
+            if (gameState.battle.active) return;
+            gameState.party.mario.x += dx * k.dt();
+            gameState.party.luigi.x += dx * k.dt();
+            marioObj.pos.x = gameState.party.mario.x;
+            luigiObj.pos.x = gameState.party.luigi.x;
+            broadcast({ type: "move", party: gameState.party });
+        }
+
+        // Battle system
+        function checkForBattle() {
+            const enemy = enemiesObj.find(e => Math.abs(e.pos.x - marioObj.pos.x) < 50 && e.hp > 0);
+            if (enemy) {
+                gameState.battle.active = true;
+                gameState.battle.enemy = enemy;
+                document.getElementById("battle-menu").style.display = "flex";
+            }
+        }
+
+        document.querySelectorAll(".battle-option").forEach(opt => {
+            opt.onclick = () => {
+                if (gameState.battle.turn !== "player" || !gameState.battle.active) return;
+                const action = opt.dataset.action;
+                const enemy = gameState.battle.enemy;
+                const enemyId = enemy.tags[0];
+                if (action === "attack") {
+                    const damage = Math.max(1, gameState.party.mario.pow - enemy.def);
+                    enemy.hp -= damage;
+                    gameState.skills.hammering += 1;
+                    k.add([k.text(`Hammer ${damage}!`, 16), k.pos(enemy.pos), k.lifespan(1), k.color(255, 0, 0)]);
+                } else if (action === "special" && gameState.party.mario.fp >= 5) {
+                    gameState.party.mario.fp -= 5;
+                    const damage = gameState.party.mario.pow + gameState.party.luigi.pow;
+                    enemy.hp -= damage;
+                    k.add([k.text(`Bros ${damage}!`, 16), k.pos(enemy.pos), k.lifespan(1), k.color(255, 255, 0)]);
+                } else if (action === "item" && gameState.inventory[0]) {
+                    gameState.party.mario.hp = Math.min(gameState.party.mario.maxHp, gameState.party.mario.hp + 20);
+                    gameState.inventory[0] = null;
+                } else if (action === "flee") {
+                    gameState.battle.active = false;
+                    document.getElementById("battle-menu").style.display = "none";
+                    return;
+                }
+                updateUI();
+                if (enemy.hp <= 0) {
+                    broadcast({ type: "defeat", id: enemyId });
+                    gameState.worldObjects[enemyId].active = false;
+                    enemy.destroy();
+                    gameState.battle.active = false;
+                    document.getElementById("battle-menu").style.display = "none";
+                    gameState.party.mario.xp += 10;
+                    gameState.party.luigi.xp += 10;
+                    setTimeout(() => {
+                        gameState.worldObjects[enemyId].active = true;
+                        gameState.worldObjects[enemyId].hp = 20;
+                        syncWorldObjects();
+                    }, 5000);
+                } else {
+                    enemyTurn(enemy);
+                }
+            };
+        });
+
+        function enemyTurn(enemy) {
+            gameState.battle.turn = "enemy";
+            const target = Math.random() < 0.5 ? "mario" : "luigi";
+            const damage = Math.max(1, enemy.pow - gameState.party[target].def);
+            gameState.party[target].hp -= damage;
+            k.add([k.text(`Hit ${damage}!`, 16), k.pos(marioObj.pos), k.lifespan(1), k.color(255, 0, 0)]);
+            gameState.battle.turn = "player";
+            if (gameState.party.mario.hp <= 0 && gameState.party.luigi.hp <= 0) respawn();
+            updateUI();
+        }
+
+        // Coin collection
+        k.onCollide("coin", "sprite", (coin) => {
+            const coinId = coin.tags[0];
+            gameState.party.mario.coins += 1;
+            gameState.skills.jumping += 1;
+            broadcast({ type: "collect", id: coinId });
+            gameState.worldObjects[coinId].active = false;
+            coin.destroy();
+            setTimeout(() => {
+                gameState.worldObjects[coinId].active = true;
+                syncWorldObjects();
+            }, 10000);
+        });
+
+        // UI updates
+        function updateUI() {
+            document.getElementById("mario-hp").textContent = gameState.party.mario.hp;
+            document.getElementById("mario-max-hp").textContent = gameState.party.mario.maxHp;
+            document.getElementById("mario-hp-bar").style.width = `${(gameState.party.mario.hp / gameState.party.mario.maxHp) * 100}%`;
+            document.getElementById("mario-fp").textContent = gameState.party.mario.fp;
+            document.getElementById("mario-fp-bar").style.width = `${(gameState.party.mario.fp / gameState.party.mario.maxFp) * 100}%`;
+            document.getElementById("luigi-hp").textContent = gameState.party.luigi.hp;
+            document.getElementById("luigi-max-hp").textContent = gameState.party.luigi.maxHp;
+            document.getElementById("luigi-hp-bar").style.width = `${(gameState.party.luigi.hp / gameState.party.luigi.maxHp) * 100}%`;
+            document.getElementById("luigi-fp").textContent = gameState.party.luigi.fp;
+            document.getElementById("luigi-fp-bar").style.width = `${(gameState.party.luigi.fp / gameState.party.luigi.maxFp) * 100}%`;
+
+            const skillGrid = document.getElementById("skill-grid");
+            skillGrid.innerHTML = "";
+            for (const [skill, level] of Object.entries(gameState.skills)) {
+                const slot = document.createElement("div");
+                slot.className = "skill-slot";
+                slot.textContent = `${skill[0].toUpperCase()}: ${level}`;
+                skillGrid.appendChild(slot);
+            }
+
+            const invGrid = document.getElementById("inventory-grid");
+            invGrid.innerHTML = "";
+            gameState.inventory.forEach((item, i) => {
+                const slot = document.createElement("div");
+                slot.className = "inventory-slot";
+                if (item) {
+                    const div = document.createElement("div");
+                    div.style.width = "24px";
+                    div.style.height = "24px";
+                    div.style.background = item === "mushroom" ? "#ff0000" : "#ffffff";
+                    slot.appendChild(div);
+                    slot.onclick = () => {
+                        if (!gameState.battle.active) {
+                            gameState.party.mario.hp = Math.min(gameState.party.mario.maxHp, gameState.party.mario.hp + 20);
+                            gameState.inventory[i] = null;
+                            updateUI();
+                        }
+                    };
+                }
+                invGrid.appendChild(slot);
+            });
+        }
+
+        // Chat system
+        document.getElementById("send-chat").onclick = sendChat;
+        document.getElementById("chat-message").onkeypress = (e) => e.key === "Enter" && sendChat();
+
+        function sendChat() {
+            const msg = document.getElementById("chat-message").value.trim();
+            if (msg) {
+                broadcast({ type: "chat", id: gameState.party.mario.id, message: msg });
+                addChatMessage(`You: ${msg}`);
+                document.getElementById("chat-message").value = "";
+            }
+        }
+
+        function addChatMessage(msg) {
+            const chat = document.getElementById("chat-messages");
+            const div = document.createElement("div");
+            div.textContent = msg;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        // Respawn
+        function respawn() {
+            gameState.party.mario.hp = gameState.party.mario.maxHp;
+            gameState.party.luigi.hp = gameState.party.luigi.maxHp;
+            gameState.party.mario.x = 120;
+            gameState.party.luigi.x = 160;
+            marioObj.pos.x = 120;
+            luigiObj.pos.x = 160;
+            gameState.battle.active = false;
+            document.getElementById("battle-menu").style.display = "none";
+            updateUI();
+        }
+
+        // Level up
+        k.onUpdate(() => {
+            if (gameState.party.mario.xp >= 100 * gameState.party.mario.level) {
+                gameState.party.mario.level++;
+                gameState.party.mario.xp = 0;
+                gameState.party.mario.maxHp += 10;
+                gameState.party.mario.hp = gameState.party.mario.maxHp;
+                gameState.party.mario.pow += 1;
+            }
+            if (gameState.party.luigi.xp >= 100 * gameState.party.luigi.level) {
+                gameState.party.luigi.level++;
+                gameState.party.luigi.xp = 0;
+                gameState.party.luigi.maxHp += 10;
+                gameState.party.luigi.hp = gameState.party.luigi.maxHp;
+                gameState.party.luigi.pow += 1;
+            }
+            updateUI();
+        });
+
+        // Start game
+        initWorld();
+        initNetworking();
+        updateUI();
+        addChatMessage("Welcome to Mario & Luigi: RuneScape Adventures! Connecting to the hub, meow!");
+    </script>
+</body>
+</html>
