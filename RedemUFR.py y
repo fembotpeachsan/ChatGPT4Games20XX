@@ -1,0 +1,552 @@
+import pygame
+import random
+import time
+
+# --- Configuration ---
+SCREEN_WIDTH = 480
+SCREEN_HEIGHT = 320
+TILE_SIZE = 16
+PLAYER_SIZE = 14  # Slightly bigger to show detail
+TEXT_BOX_HEIGHT = 80
+FONT_SIZE = 18
+
+# --- Colors (RGB) - FireRed Palette Approximations ---
+FR_PINK = (248, 120, 168)       # For certain Pokemon
+FR_SIENNA_BARK = (160, 82, 45)    # For Barkbite
+FR_LIGHT_BLUE_PKMN = (173, 216, 230) # For Pixelpup
+
+FR_PLAYER_RED_HAT = (232, 32, 16)
+FR_PLAYER_BLUE_SHIRT = (40, 88, 176)
+FR_PLAYER_SKIN = (248, 200, 160)
+FR_PLAYER_HAIR_BROWN = (88, 40, 8) # For a touch of hair
+
+FR_GRASS_GREEN = (48, 160, 72)
+FR_GRASS_DARK = (24, 96, 40)
+FR_GRASS_FLOWER_YELLOW = (248, 224, 56)
+FR_GRASS_FLOWER_RED = (208, 40, 24)
+
+FR_PATH_LIGHT_BROWN = (208, 168, 72)
+FR_PATH_DARK_BROWN = (136, 96, 40)
+
+FR_WALL_DARK_GREY = (88, 88, 88)
+FR_WALL_LIGHT_GREY = (168, 168, 168)
+FR_TREE_TRUNK = (88, 56, 8)
+FR_TREE_LEAVES = (24, 112, 40)
+
+FR_WATER_BLUE = (88, 152, 240)
+FR_WATER_HIGHLIGHT = (168, 208, 248)
+
+FR_UI_DARK_BLUE = (40, 48, 96)  # Textbox background
+FR_UI_BORDER_WHITE = (240, 240, 240)
+FR_TEXT_WHITE = (248, 248, 248)
+FR_TEXT_BLACK = (32, 32, 32)
+FR_TEXT_OPTION_RED = (232, 32, 16)
+FR_HP_GREEN = (32, 200, 32)
+FR_HP_YELLOW = (248, 224, 56)
+FR_HP_RED = (208, 40, 24)
+
+BLACK = (0, 0, 0)  # Keep a true black if needed
+WHITE = (255, 255, 255)  # Keep a true white
+
+# --- Game States ---
+STATE_OVERWORLD = "overworld"
+STATE_BATTLE = "battle"
+STATE_TEXTBOX = "textbox"
+
+# --- Game World (Tile Types) ---
+# 0: Path
+# 1: Grass - potential encounter
+# 2: Wall/Obstacle (generic, could be tree base or rock)
+# 3: Water
+# 4: NPC_BLOCK
+# 5: Tree Top (drawn on top of a wall tile)
+MAP_WIDTH = SCREEN_WIDTH // TILE_SIZE
+MAP_HEIGHT = (SCREEN_HEIGHT - TEXT_BOX_HEIGHT) // TILE_SIZE
+
+game_map = [[2 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
+
+# --- Placeholder Pokemon Data (with pixel art stubs) ---
+# Structure: name, hp, attack, defense, "sprite_pixels" (None or simple pattern), "base_color"
+# sprite_pixels is a 2D array, 1 means draw base_color, 0 means draw slightly darker base_color, None means transparent
+# Using 5x5 stubs for an 80x80 area, so each "pixel" is 16x16
+POKEMON_DATA = {
+    "KITTENPUNCH": {"hp": 30, "max_hp": 30, "attack": 8, "defense": 5,
+                    "sprite_pixels": [  # Cat-like face
+                        [None, 1, None, 1, None],
+                        [None, 1, 1, 1, None],
+                        [1, 0, 1, 0, 1],
+                        [None, 1, 1, 1, None],
+                        [None, None, 1, None, None]
+                    ], "base_color": FR_PINK, "dark_color": (200, 90, 130)},
+    "BARKBITE": {"hp": 35, "max_hp": 35, "attack": 7, "defense": 6,
+                 "sprite_pixels": [  # Dog-like snout
+                        [None, 1, 1, 1, None],
+                        [1, 1, 0, 1, 1],
+                        [1, 0, 0, 0, 1],
+                        [None, 1, 0, 1, None],
+                        [None, 1, None, 1, None]
+                    ], "base_color": FR_SIENNA_BARK, "dark_color": (120, 60, 30)},
+    "PIXELPUP": {"hp": 25, "max_hp": 25, "attack": 9, "defense": 4,
+                 "sprite_pixels": [  # Simple roundish shape
+                        [None, 1, 1, 1, None],
+                        [1, 1, 1, 1, 1],
+                        [1, 1, 0, 1, 1],
+                        [1, 1, 1, 1, 1],
+                        [None, 1, None, 1, None]
+                    ], "base_color": FR_LIGHT_BLUE_PKMN, "dark_color": (130, 170, 190)}
+}
+
+def wrap_text(text, font, max_width):
+    words = text.split(' ')
+    lines = []
+    current_line = ""
+    for word in words:
+        test_line = current_line + word + " "
+        if font.size(test_line)[0] <= max_width:
+            current_line = test_line
+        else:
+            lines.append(current_line.strip())
+            current_line = word + " "
+    lines.append(current_line.strip())
+    return lines
+
+class RedEmuGame:
+    def __init__(self):
+        pygame.init()
+        self.actual_screen_height = SCREEN_HEIGHT
+        self.game_screen_height = SCREEN_HEIGHT - TEXT_BOX_HEIGHT
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, self.actual_screen_height))
+        pygame.display.set_caption("RedEMU")
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.Font(None, FONT_SIZE)
+        self.large_font = pygame.font.Font(None, FONT_SIZE + 6)
+
+        self.game_state = STATE_OVERWORLD
+        self.current_map = [[2 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
+        self.player_x_tile = MAP_WIDTH // 2
+        self.player_y_tile = MAP_HEIGHT // 2
+        self.player_facing_direction = 'down'  # 'up', 'down', 'left', 'right'
+
+        self.textbox_message_queue = []
+        self.current_textbox_message_lines = []
+        self.textbox_line_index = 0
+        self.textbox_active = False
+
+        self.battle_active = False
+        self.player_pokemon = None
+        self.enemy_pokemon = None
+        self.battle_turn = "player"
+        self.battle_message = ""
+        self.last_battle_message_time = 0
+
+        self.generate_procedural_map()
+        self.setup_player_pokemon()
+
+        self.current_map[self.player_y_tile - 2][self.player_x_tile] = 4
+        self.npc_data = {
+            (self.player_x_tile, self.player_y_tile - 2): "This town looks familiar, doesn't it?"
+        }
+
+    def setup_player_pokemon(self):
+        start_mon_name = "KITTENPUNCH"
+        data = POKEMON_DATA[start_mon_name]
+        self.player_pokemon = {
+            "name": start_mon_name,
+            "hp": data["hp"], "max_hp": data["max_hp"],
+            "attack": data["attack"], "defense": data["defense"],
+            "sprite_pixels": data["sprite_pixels"], "base_color": data["base_color"], "dark_color": data["dark_color"]
+        }
+
+    def generate_procedural_map(self):
+        for r in range(MAP_HEIGHT):
+            for c in range(MAP_WIDTH):
+                if r == 0 or c == 0 or r == MAP_HEIGHT - 1 or c == MAP_WIDTH - 1:
+                    self.current_map[r][c] = 2  # Wall
+                else:
+                    rand_val = random.random()
+                    if rand_val < 0.5:
+                        self.current_map[r][c] = 1  # Grass
+                    elif rand_val < 0.7:
+                        self.current_map[r][c] = 0  # Path
+                    elif rand_val < 0.8 and (r > 2 and c > 2 and r < MAP_HEIGHT - 2 and c < MAP_WIDTH - 2):
+                        is_clear = True
+                        for dr in [-1, 0, 1]:
+                            for dc in [-1, 0, 1]:
+                                if self.current_map[r + dr][c + dc] == 3:
+                                    is_clear = False  # No adjacent water
+                        if is_clear:
+                            self.current_map[r][c] = 3  # Water
+                        else:
+                            self.current_map[r][c] = 1  # Grass if water too close
+                    elif rand_val < 0.9:  # Chance for a "tree" (wall base + top part)
+                        self.current_map[r][c] = 2  # Base of tree (looks like wall)
+                        if r > 0:
+                            self.current_map[r - 1][c] = 5  # Tree top (drawn over whatever was there)
+                    else:
+                        self.current_map[r][c] = 2  # Wall
+        self.current_map[self.player_y_tile][self.player_x_tile] = 0
+        self.current_map[self.player_y_tile][self.player_x_tile + 1] = 0
+
+    def draw_tile(self, surface, tile_type, x_pixel, y_pixel):
+        rect = pygame.Rect(x_pixel, y_pixel, TILE_SIZE, TILE_SIZE)
+
+        if tile_type == 0:  # Path
+            pygame.draw.rect(surface, FR_PATH_LIGHT_BROWN, rect)
+            for _ in range(3):  # Some darker speckles
+                speckle_x = x_pixel + random.randint(0, TILE_SIZE - 2)
+                speckle_y = y_pixel + random.randint(0, TILE_SIZE - 2)
+                pygame.draw.rect(surface, FR_PATH_DARK_BROWN, (speckle_x, speckle_y, 2, 2))
+        elif tile_type == 1:  # Grass
+            pygame.draw.rect(surface, FR_GRASS_GREEN, rect)
+            # Jagged "tufts"
+            pygame.draw.polygon(surface, FR_GRASS_DARK, [
+                (x_pixel + 2, y_pixel + TILE_SIZE - 2), (x_pixel + 5, y_pixel + TILE_SIZE - 6),
+                (x_pixel + 8, y_pixel + TILE_SIZE - 2), (x_pixel + 11, y_pixel + TILE_SIZE - 6),
+                (x_pixel + TILE_SIZE - 2, y_pixel + TILE_SIZE - 2)
+            ])
+            if random.random() < 0.05:  # Tiny flower
+                f_col = FR_GRASS_FLOWER_YELLOW if random.random() < 0.7 else FR_GRASS_FLOWER_RED
+                pygame.draw.circle(surface, f_col, (x_pixel + TILE_SIZE // 2, y_pixel + TILE_SIZE // 2), 2)
+        elif tile_type == 2:  # Wall / Obstacle / Tree Base
+            pygame.draw.rect(surface, FR_WALL_DARK_GREY, rect)
+            pygame.draw.rect(surface, FR_WALL_LIGHT_GREY, (x_pixel + 1, y_pixel + 1, TILE_SIZE - 2, TILE_SIZE - 2))
+            pygame.draw.rect(surface, FR_TEXT_BLACK, rect, 1)
+        elif tile_type == 3:  # Water
+            pygame.draw.rect(surface, FR_WATER_BLUE, rect)
+            pygame.draw.line(surface, FR_WATER_HIGHLIGHT, (x_pixel, y_pixel + TILE_SIZE // 3), (x_pixel + TILE_SIZE - 2, y_pixel + TILE_SIZE // 3 + 3), 1)
+            pygame.draw.line(surface, FR_WATER_HIGHLIGHT, (x_pixel + 2, y_pixel + 2 * TILE_SIZE // 3 + 1), (x_pixel + TILE_SIZE, y_pixel + 2 * TILE_SIZE // 3 - 2), 1)
+        elif tile_type == 4:  # NPC block
+            pygame.draw.rect(surface, FR_PATH_LIGHT_BROWN, rect)  # Path underneath
+            npc_body_rect = pygame.Rect(x_pixel + TILE_SIZE // 2 - 3, y_pixel + TILE_SIZE // 2 - 4, 6, 8)
+            npc_head_rect = pygame.Rect(x_pixel + TILE_SIZE // 2 - 2, y_pixel + TILE_SIZE // 2 - 7, 4, 4)
+            pygame.draw.rect(surface, FR_PLAYER_RED_HAT, npc_body_rect)  # Make them look like mini-Reds
+            pygame.draw.rect(surface, FR_PLAYER_SKIN, npc_head_rect)
+        elif tile_type == 5:  # Tree Top (drawn over whatever tile is in map array at this pos)
+            pygame.draw.circle(surface, FR_TREE_LEAVES, (x_pixel + TILE_SIZE // 2, y_pixel + TILE_SIZE // 2), TILE_SIZE // 2 + 2)
+            pygame.draw.circle(surface, FR_GRASS_DARK, (x_pixel + TILE_SIZE // 2, y_pixel + TILE_SIZE // 2), TILE_SIZE // 2 - 2)  # Darker inner part
+
+    def draw_map(self, surface):
+        # Draw base layer first
+        for r_idx, row in enumerate(self.current_map):
+            for c_idx, tile_val in enumerate(row):
+                if tile_val != 5:  # Don't draw tree tops in this pass
+                    self.draw_tile(surface, tile_val, c_idx * TILE_SIZE, r_idx * TILE_SIZE)
+        # Draw tree tops (tile type 5) last so they appear on top
+        for r_idx, row in enumerate(self.current_map):
+            for c_idx, tile_val in enumerate(row):
+                if tile_val == 5:
+                    underlying_rect = pygame.Rect(c_idx * TILE_SIZE, r_idx * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                    pygame.draw.rect(surface, FR_GRASS_GREEN, underlying_rect)  # Assume grass under tree top for now
+                    self.draw_tile(surface, tile_val, c_idx * TILE_SIZE, r_idx * TILE_SIZE)
+
+    def draw_player(self, surface):
+        player_pixel_x = self.player_x_tile * TILE_SIZE + (TILE_SIZE - PLAYER_SIZE) // 2
+        player_pixel_y = self.player_y_tile * TILE_SIZE + (TILE_SIZE - PLAYER_SIZE) // 2
+
+        # Simplified FireRed player sprite
+        body_h = PLAYER_SIZE // 2
+        head_h = PLAYER_SIZE // 3
+        hat_h = PLAYER_SIZE // 4
+
+        # Hair (visible under hat side/back)
+        if self.player_facing_direction == 'left' or self.player_facing_direction == 'right':
+            pygame.draw.rect(surface, FR_PLAYER_HAIR_BROWN, (player_pixel_x + PLAYER_SIZE // 4, player_pixel_y + hat_h - 1, PLAYER_SIZE // 2, head_h // 2))
+        elif self.player_facing_direction == 'up':
+            pygame.draw.rect(surface, FR_PLAYER_HAIR_BROWN, (player_pixel_x + PLAYER_SIZE // 4, player_pixel_y + hat_h, PLAYER_SIZE // 2, head_h // 3))
+
+        # Body (Blue Shirt)
+        pygame.draw.rect(surface, FR_PLAYER_BLUE_SHIRT, (player_pixel_x, player_pixel_y + PLAYER_SIZE - body_h - 1, PLAYER_SIZE, body_h))
+
+        # Head (Skin Tone)
+        pygame.draw.rect(surface, FR_PLAYER_SKIN, (player_pixel_x + PLAYER_SIZE // 4, player_pixel_y + hat_h - 2, PLAYER_SIZE // 2, head_h))
+
+        # Hat (Red)
+        pygame.draw.ellipse(surface, FR_PLAYER_RED_HAT, (player_pixel_x, player_pixel_y, PLAYER_SIZE, hat_h * 1.5))
+        pygame.draw.rect(surface, FR_UI_BORDER_WHITE, (player_pixel_x, player_pixel_y + hat_h - (hat_h // 3), PLAYER_SIZE, hat_h // 2))  # Hat brim
+
+        if self.player_facing_direction == 'down':  # Eyes
+            eye_y = player_pixel_y + hat_h + head_h // 3
+            pygame.draw.rect(surface, FR_TEXT_BLACK, (player_pixel_x + PLAYER_SIZE // 4 + 1, eye_y, 2, 2))
+            pygame.draw.rect(surface, FR_TEXT_BLACK, (player_pixel_x + PLAYER_SIZE - PLAYER_SIZE // 4 - 3, eye_y, 2, 2))
+
+        pygame.draw.rect(surface, FR_TEXT_BLACK, (player_pixel_x - 1, player_pixel_y - 1, PLAYER_SIZE + 2, PLAYER_SIZE + 2), 1)  # Outline
+
+    def draw_textbox(self):
+        box_rect = pygame.Rect(0, self.game_screen_height, SCREEN_WIDTH, TEXT_BOX_HEIGHT)
+        pygame.draw.rect(self.screen, FR_UI_DARK_BLUE, box_rect)
+        pygame.draw.rect(self.screen, FR_UI_BORDER_WHITE, box_rect, 3)
+
+        if self.current_textbox_message_lines:
+            for i, line in enumerate(self.current_textbox_message_lines):
+                if i <= self.textbox_line_index:
+                    text_surface = self.font.render(line, True, FR_TEXT_WHITE)
+                    self.screen.blit(text_surface, (15, self.game_screen_height + 15 + (i * (FONT_SIZE + 2))))
+            if self.textbox_line_index >= len(self.current_textbox_message_lines) - 1:
+                indicator_text = self.font.render("v (Z)", True, FR_TEXT_OPTION_RED)
+                self.screen.blit(indicator_text, (SCREEN_WIDTH - 45, self.actual_screen_height - 25))
+
+    def show_message(self, message):
+        self.textbox_message_queue.append(message)
+        if not self.textbox_active:
+            self._activate_next_message()
+
+    def _activate_next_message(self):
+        if self.textbox_message_queue:
+            message = self.textbox_message_queue.pop(0)
+            self.current_textbox_message_lines = wrap_text(message, self.font, SCREEN_WIDTH - 40)  # Wider margin
+            self.textbox_line_index = 0
+            self.game_state = STATE_TEXTBOX
+            self.textbox_active = True
+        else:
+            self.textbox_active = False
+            self.game_state = STATE_OVERWORLD
+
+    def handle_textbox_input(self, event):
+        if event.key == pygame.K_z:
+            self.textbox_line_index += 1
+            if self.textbox_line_index >= len(self.current_textbox_message_lines):
+                self._activate_next_message()
+
+    def handle_overworld_input(self, event):
+        new_x_tile, new_y_tile = self.player_x_tile, self.player_y_tile
+        moved = False
+        if event.key == pygame.K_LEFT:
+            new_x_tile -= 1
+            self.player_facing_direction = 'left'
+            moved = True
+        elif event.key == pygame.K_RIGHT:
+            new_x_tile += 1
+            self.player_facing_direction = 'right'
+            moved = True
+        elif event.key == pygame.K_UP:
+            new_y_tile -= 1
+            self.player_facing_direction = 'up'
+            moved = True
+        elif event.key == pygame.K_DOWN:
+            new_y_tile += 1
+            self.player_facing_direction = 'down'
+            moved = True
+        elif event.key == pygame.K_z:
+            # Check interaction based on where player is facing
+            check_x, check_y = self.player_x_tile, self.player_y_tile
+            if self.player_facing_direction == 'up':
+                check_y -= 1
+            elif self.player_facing_direction == 'down':
+                check_y += 1
+            elif self.player_facing_direction == 'left':
+                check_x -= 1
+            elif self.player_facing_direction == 'right':
+                check_x += 1
+
+            if 0 <= check_x < MAP_WIDTH and 0 <= check_y < MAP_HEIGHT:
+                if self.current_map[check_y][check_x] == 4:
+                    npc_pos = (check_x, check_y)
+                    if npc_pos in self.npc_data:
+                        self.show_message(self.npc_data[npc_pos])
+                        return
+
+        if moved:
+            if 0 <= new_x_tile < MAP_WIDTH and 0 <= new_y_tile < MAP_HEIGHT:
+                target_tile = self.current_map[new_y_tile][new_x_tile]
+                if target_tile not in [2, 3, 5]:  # Can't walk on walls, water, or tree tops
+                    self.player_x_tile = new_x_tile
+                    self.player_y_tile = new_y_tile
+                    if self.current_map[self.player_y_tile][self.player_x_tile] == 1:
+                        if random.random() < 0.10:  # 10% encounter in grass
+                            self.start_battle()
+                elif target_tile == 3:
+                    self.show_message("That's water! Can't swim yet.")
+                elif target_tile == 2 or target_tile == 5:
+                    self.show_message("That's a solid object. Can't walk through it.")
+
+    def start_battle(self):
+        if not self.player_pokemon or self.player_pokemon["hp"] <= 0:
+            self.show_message("Your Pokémon is too tired to fight!")
+            return
+
+        wild_pokemon_name = random.choice(list(POKEMON_DATA.keys()))
+        data = POKEMON_DATA[wild_pokemon_name]
+        self.enemy_pokemon = {
+            "name": wild_pokemon_name, "hp": data["hp"], "max_hp": data["max_hp"],
+            "attack": data["attack"], "defense": data["defense"],
+            "sprite_pixels": data["sprite_pixels"], "base_color": data["base_color"], "dark_color": data["dark_color"]
+        }
+        self.game_state = STATE_BATTLE
+        self.battle_active = True
+        self.battle_turn = "player"
+        self.battle_message = f"A wild {self.enemy_pokemon['name']} appeared!"
+        self.last_battle_message_time = time.time()
+
+    def _draw_pokemon_sprite(self, surface, pokemon_data, base_x, base_y, size=80):
+        sprite_pixels = pokemon_data.get("sprite_pixels")
+        base_color = pokemon_data.get("base_color")
+        dark_color = pokemon_data.get("dark_color", base_color)  # Fallback for dark_color
+
+        if sprite_pixels and base_color:
+            num_pixel_cols = len(sprite_pixels[0])
+            num_pixel_rows = len(sprite_pixels)
+            pixel_draw_w = size // num_pixel_cols
+            pixel_draw_h = size // num_pixel_rows
+
+            for r_idx, row in enumerate(sprite_pixels):
+                for c_idx, pixel_val in enumerate(row):
+                    if pixel_val == 1:  # Main color
+                        pygame.draw.rect(surface, base_color,
+                                         (base_x + c_idx * pixel_draw_w, base_y + r_idx * pixel_draw_h,
+                                          pixel_draw_w, pixel_draw_h))
+                    elif pixel_val == 0:  # Darker/Shade color
+                        pygame.draw.rect(surface, dark_color,
+                                         (base_x + c_idx * pixel_draw_w, base_y + r_idx * pixel_draw_h,
+                                          pixel_draw_w, pixel_draw_h))
+            pygame.draw.rect(surface, FR_UI_BORDER_WHITE, (base_x - 2, base_y - 2, size + 4, size + 4), 2)
+        else:  # Fallback if no pixel data
+            pygame.draw.rect(surface, pokemon_data.get("base_color", FR_WALL_DARK_GREY), (base_x, base_y, size, size))
+            pygame.draw.rect(surface, FR_UI_BORDER_WHITE, (base_x - 2, base_y - 2, size + 4, size + 4), 2)
+
+    def _draw_hp_bar(self, surface, current_hp, max_hp, x, y, width, height):
+        ratio = current_hp / max_hp
+        bar_color = FR_HP_GREEN
+        if ratio < 0.5:
+            bar_color = FR_HP_YELLOW
+        if ratio < 0.2:
+            bar_color = FR_HP_RED
+
+        pygame.draw.rect(surface, FR_TEXT_BLACK, (x, y, width, height))  # Background
+        pygame.draw.rect(surface, bar_color, (x + 1, y + 1, (width - 2) * ratio, height - 2))  # HP fill
+        pygame.draw.rect(surface, FR_UI_BORDER_WHITE, (x, y, width, height), 1)  # Border
+
+    def draw_battle_ui(self):
+        self.screen.fill(FR_TEXT_BLACK)  # Dark battle background
+
+        # Enemy Pokemon (top right)
+        if self.enemy_pokemon:
+            self._draw_pokemon_sprite(self.screen, self.enemy_pokemon, SCREEN_WIDTH - 120, 40, 80)
+            enemy_name_surf = self.large_font.render(self.enemy_pokemon["name"], True, FR_TEXT_WHITE)
+            self.screen.blit(enemy_name_surf, (SCREEN_WIDTH - 200, 15))  # Name more to the left of sprite
+            self._draw_hp_bar(self.screen, self.enemy_pokemon["hp"], self.enemy_pokemon["max_hp"], SCREEN_WIDTH - 200, 15 + FONT_SIZE + 5, 100, 10)
+
+        # Player Pokemon (bottom left, from back - use same sprite for now)
+        if self.player_pokemon:
+            self._draw_pokemon_sprite(self.screen, self.player_pokemon, 40, self.actual_screen_height - 210, 80)
+            player_name_surf = self.large_font.render(self.player_pokemon["name"], True, FR_TEXT_WHITE)
+            self.screen.blit(player_name_surf, (130, self.actual_screen_height - 235))  # Name more to the right
+            self._draw_hp_bar(self.screen, self.player_pokemon["hp"], self.player_pokemon["max_hp"], 130, self.actual_screen_height - 235 + FONT_SIZE + 5, 100, 10)
+            hp_text_surf = self.font.render(f"{self.player_pokemon['hp']}/{self.player_pokemon['max_hp']}", True, FR_TEXT_WHITE)
+            self.screen.blit(hp_text_surf, (130, self.actual_screen_height - 235 + FONT_SIZE + 5 + 12))
+
+        # Battle Text Box
+        box_rect = pygame.Rect(0, self.game_screen_height, SCREEN_WIDTH, TEXT_BOX_HEIGHT)
+        pygame.draw.rect(self.screen, FR_UI_DARK_BLUE, box_rect)
+        pygame.draw.rect(self.screen, FR_UI_BORDER_WHITE, box_rect, 3)
+
+        if self.battle_message:
+            lines = wrap_text(self.battle_message, self.font, SCREEN_WIDTH - 120)  # Room for options on right
+            for i, line in enumerate(lines[:2]):
+                text_surface = self.font.render(line, True, FR_TEXT_WHITE)
+                self.screen.blit(text_surface, (15, self.game_screen_height + 15 + (i * (FONT_SIZE + 2))))
+
+        # Actions (ATTACK or RUN)
+        if self.battle_turn == "player" and (time.time() - self.last_battle_message_time > 0.8):  # Quicker transition
+            fight_text = self.font.render("1. ATTACK", True, FR_TEXT_WHITE)
+            run_text = self.font.render("2. RUN", True, FR_TEXT_WHITE)
+
+            options_bg_rect = pygame.Rect(SCREEN_WIDTH - 110, self.game_screen_height + 10, 100, TEXT_BOX_HEIGHT - 20)
+            pygame.draw.rect(self.screen, FR_WALL_LIGHT_GREY, options_bg_rect)  # Box for options
+            pygame.draw.rect(self.screen, FR_UI_BORDER_WHITE, options_bg_rect, 2)
+
+            self.screen.blit(fight_text, (SCREEN_WIDTH - 100, self.game_screen_height + 20))
+            self.screen.blit(run_text, (SCREEN_WIDTH - 100, self.game_screen_height + 20 + FONT_SIZE + 10))
+
+    def handle_battle_input(self, event):
+        if self.battle_turn == "player" and (time.time() - self.last_battle_message_time > 0.8):
+            if event.key == pygame.K_1:
+                self.execute_player_attack()
+            elif event.key == pygame.K_2:
+                self.battle_message = "You got away safely!"
+                self.last_battle_message_time = time.time()
+                pygame.time.set_timer(pygame.USEREVENT + 1, 1500, True)
+
+    def execute_player_attack(self):
+        if not self.player_pokemon or not self.enemy_pokemon:
+            return
+
+        damage = max(1, self.player_pokemon["attack"] - self.enemy_pokemon["defense"] // 2 + random.randint(-2, 3))  # Slightly higher variance
+        self.enemy_pokemon["hp"] = max(0, self.enemy_pokemon["hp"] - damage)
+        self.battle_message = f"{self.player_pokemon['name']} attacks {self.enemy_pokemon['name']}! Did {damage} damage!"
+        self.last_battle_message_time = time.time()
+
+        if self.enemy_pokemon["hp"] <= 0:
+            self.battle_message = f"Enemy {self.enemy_pokemon['name']} fainted! You win!"
+            pygame.time.set_timer(pygame.USEREVENT + 1, 2500, True)
+        else:
+            self.battle_turn = "enemy_pending_message"
+            pygame.time.set_timer(pygame.USEREVENT + 2, 1200, True)
+
+    def execute_enemy_attack(self):
+        if not self.player_pokemon or not self.enemy_pokemon:
+            return
+
+        damage = max(1, self.enemy_pokemon["attack"] - self.player_pokemon["defense"] // 2 + random.randint(-2, 3))
+        self.player_pokemon["hp"] = max(0, self.player_pokemon["hp"] - damage)
+        self.battle_message = f"Wild {self.enemy_pokemon['name']} attacks your {self.player_pokemon['name']}! Took {damage} damage!"
+        self.last_battle_message_time = time.time()
+
+        if self.player_pokemon["hp"] <= 0:
+            self.battle_message = f"Your {self.player_pokemon['name']} fainted! Game Over."
+            pygame.time.set_timer(pygame.USEREVENT + 1, 3000, True)  # Longer pause on loss
+        else:
+            self.battle_turn = "player"
+
+    def end_battle(self):
+        self.battle_active = False
+        self.enemy_pokemon = None
+        self.game_state = STATE_OVERWORLD
+        self.battle_message = ""
+        if self.player_pokemon and self.player_pokemon["hp"] > 0:  # Slight heal if won/ran
+            self.player_pokemon["hp"] = min(self.player_pokemon["max_hp"], self.player_pokemon["hp"] + self.player_pokemon["max_hp"] // 4)  # Heal 25%
+            self.show_message("That was a tough fight. Your Pokémon has been healed a bit.")
+        elif self.player_pokemon and self.player_pokemon["hp"] <= 0:
+            self.show_message("Your Pokémon has been healed.")
+            self.player_pokemon["hp"] = self.player_pokemon["max_hp"]  # Full heal on "blackout" for now
+
+    def run(self):
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:  # Escape key to quit
+                        running = False
+                    if self.game_state == STATE_OVERWORLD:
+                        self.handle_overworld_input(event)
+                    elif self.game_state == STATE_TEXTBOX:
+                        self.handle_textbox_input(event)
+                    elif self.game_state == STATE_BATTLE:
+                        self.handle_battle_input(event)
+                if event.type == pygame.USEREVENT + 1:
+                    self.end_battle()
+                    pygame.time.set_timer(pygame.USEREVENT + 1, 0)
+                if event.type == pygame.USEREVENT + 2:
+                    if self.battle_turn == "enemy_pending_message":
+                        self.battle_turn = "enemy"
+                        self.execute_enemy_attack()
+                    pygame.time.set_timer(pygame.USEREVENT + 2, 0)
+
+            if self.game_state == STATE_OVERWORLD or self.game_state == STATE_TEXTBOX:
+                self.screen.fill(FR_TEXT_BLACK)  # Black bg for overworld helps tiles pop
+                self.draw_map(self.screen)
+                self.draw_player(self.screen)  # Draw player after map so they are on top
+                if self.textbox_active:
+                    self.draw_textbox()  # Draw textbox on top of player/map
+            elif self.game_state == STATE_BATTLE:
+                self.draw_battle_ui()
+
+            pygame.display.flip()
+            self.clock.tick(30)
+
+        pygame.quit()
+
+if __name__ == '__main__':
+    game = RedEmuGame()
+    game.run()
